@@ -41,19 +41,9 @@ function install-course {
     }
 
     function Install-ZuluJRE {
-        Write-Host "🌐 Downloading Zulu JRE..."
+        Write-Host "⬇️ Downloading Zulu JRE..."
 
-        $arch = if ([Environment]::Is64BitOperatingSystem) { "x64" } else { "x86" }
-
-        $jsonUrl = "https://api.azul.com/zulu/download/community/v1.0/bundles/latest/?java_version=$JavaRequiredFull&os=windows&arch=$arch&ext=zip&bundle_type=jre&javafx=false&release_status=ga&hw_bitness=64"
-
-        $bundle = Invoke-RestMethod $jsonUrl
-        $downloadUrl = $bundle.download_url
-
-        if (-not $downloadUrl) {
-            Write-Error "❌ Could not retrieve Zulu JRE download URL."
-            exit 1
-        }
+        $downloadUrl = "https://www.azul.com/core-post-download/?endpoint=zulu&uuid=10ea2f05-3b43-4644-8916-edad3e9014cb"
 
         $zipFile = "$env:TEMP\zulu-jre.zip"
         $targetDir = "$PWD\$BaseDir\zulu-java"
@@ -68,6 +58,7 @@ function install-course {
         $env:JAVA_HOME = $ZuluPath
         $env:Path = "$ZuluPath\bin;$env:Path"
 
+        Write-Host "✅ Java installed at $ZuluPath"
         java -version
     }
 
@@ -97,7 +88,7 @@ function install-course {
     Start-Process "$($tomcatPath.FullName)\bin\catalina.bat" -ArgumentList "run"
 }
 
-# Allow local use too
+# Allow direct call from script too
 if ($MyInvocation.InvocationName -eq '.\content-manager-course-setup.ps1' -or $MyInvocation.MyCommand.Name -eq 'content-manager-course-setup.ps1') {
     if ($args.Count -ge 1) {
         install-course $args[0]
