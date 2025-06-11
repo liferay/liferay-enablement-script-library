@@ -43,7 +43,7 @@ function install-course {
     function Install-ZuluJRE {
         Write-Host "⬇️ Downloading Zulu JRE..."
 
-        $downloadUrl = "https://www.azul.com/core-post-download/?endpoint=zulu&uuid=10ea2f05-3b43-4644-8916-edad3e9014cb"
+        $downloadUrl = "https://cdn.azul.com/zulu/bin/zulu21.30.15-ca-jre21.0.1-win_x64.zip"
 
         $zipFile = "$env:TEMP\zulu-jre.zip"
         $targetDir = "$PWD\$BaseDir\zulu-java"
@@ -88,7 +88,7 @@ function install-course {
     Start-Process "$($tomcatPath.FullName)\bin\catalina.bat" -ArgumentList "run"
 }
 
-# Allow direct call from script too
+# Allow direct execution
 if ($MyInvocation.InvocationName -eq '.\content-manager-course-setup.ps1' -or $MyInvocation.MyCommand.Name -eq 'content-manager-course-setup.ps1') {
     if ($args.Count -ge 1) {
         install-course $args[0]
