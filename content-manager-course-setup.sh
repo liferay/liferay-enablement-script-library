@@ -6,19 +6,26 @@ set -e
 BASE_DIR="liferay-course-content-manager"
 JAVA_REQUIRED_VERSION="21.0.1"
 
-# === VALIDATE ARGUMENT ===
-if [[ $# -ne 1 ]]; then
-    echo "❌ Wrong URL or invalid parameter"
+# === VALIDATE ARGUMENTS ===
+if [[ $# -ne 2 ]]; then
+    echo "❌ Wrong usage."
+    echo "Usage:"
+    echo "  bash -c \"\$(curl -fsSL <url>)\" -- --course1 mac"
+    echo "  bash -c \"\$(curl -fsSL <url>)\" -- --course2 linux"
     exit 1
 fi
 
 COURSE_KEY="$1"
+OS_INPUT="$2"
 
 if [[ "$COURSE_KEY" == "--help" ]]; then
     echo "📚 Available options:"
     echo "  --course1     Install Backend Client Extensions course"
     echo "  --course2     Install Frontend Client Extensions course"
     echo "  --help        Show this help message"
+    echo
+    echo "📦 Example usage:"
+    echo "  bash -c \"\$(curl -fsSL <url>)\" -- --course1 mac"
     exit 0
 fi
 
@@ -30,30 +37,25 @@ case "$COURSE_KEY" in
         REPO_URL="https://github.com/liferay/liferay-course-frontend-client-extensions/archive/refs/heads/main.zip"
         ;;
     *)
-        echo "❌ Invalid option: $COURSE_KEY"
-        echo "Usage: --course1 | --course2"
+        echo "❌ Invalid course option: $COURSE_KEY"
+        echo "Use: --course1 | --course2"
         exit 1
         ;;
 esac
+
+if [[ "$OS_INPUT" == "mac" || "$OS_INPUT" == "linux" ]]; then
+    OS="$OS_INPUT"
+else
+    echo "❌ Invalid OS parameter: $OS_INPUT"
+    echo "Use 'mac' or 'linux' as the second parameter."
+    exit 1
+fi
 
 REPO_ZIP="repo.zip"
 REPO_DIR_NAME="${COURSE_KEY/--/}"  # e.g., course1 -> course-1
 COURSE_DIR="${BASE_DIR}-${REPO_DIR_NAME}"
 
-# === ASK FOR OS ===
-echo "Which operating system are you using?"
-echo "1) macOS"
-echo "2) Linux"
-read -rp "Enter the number (1 or 2): " os_choice
 
-if [[ "$os_choice" == "1" ]]; then
-    OS="mac"
-elif [[ "$os_choice" == "2" ]]; then
-    OS="linux"
-else
-    echo "❌ Invalid choice. Please enter 1 or 2."
-    exit 1
-fi
 
 function check_command {
     command -v "$1" &>/dev/null
