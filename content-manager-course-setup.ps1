@@ -27,6 +27,7 @@ function install-course {
     $TempExtractRoot = "$env:TEMP\extracted-course"
 
     # === Download Course ZIP ===
+    $ProgressPreference = 'SilentlyContinue' 
     Write-Host "📦 Downloading course repository..."
     Invoke-WebRequest -Uri $RepoUrl -OutFile $ZipPath -UseBasicParsing
 
@@ -76,6 +77,7 @@ function install-course {
         $zipFile = "$env:TEMP\zulu-jre.zip"
         $targetDir = $JavaInstallDir
 
+        $ProgressPreference = 'SilentlyContinue'
         Invoke-WebRequest -Uri $ZuluDownloadUrl -OutFile $zipFile -UseBasicParsing
         Expand-Archive -Path $zipFile -DestinationPath $targetDir
         Remove-Item $zipFile
