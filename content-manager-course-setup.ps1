@@ -6,9 +6,9 @@ function install-course {
     )
 
     # === CONFIGURATION ===
-    $BaseDir = "liferay-course-content-manager"
-    $JavaRequiredVersion = "21"
-    $JavaRequiredFull = "21.0.1"
+    $JavaRequiredVersion = 21
+    $ZuluVersion = "21.0.1"
+    $ZuluDownloadUrl = "https://cdn.azul.com/zulu/bin/zulu21.30.15-ca-jre21.0.1-win_x64.zip"
 
     switch ($CourseKey) {
         "--course1" {
@@ -18,21 +18,48 @@ function install-course {
             $RepoUrl = "https://github.com/liferay/liferay-course-frontend-client-extensions/archive/refs/heads/main.zip"
         }
         Default {
-            Write-Host "❌ Invalid or missing argument: use --course1 or --course2"
+            Write-Host "❌ Invalid or missing argument. Use --course1 or --course2."
             return
         }
     }
 
-    $CourseDirName = $CourseKey.TrimStart("-")
-    $CourseDir = "$BaseDir-$CourseDirName"
     $ZipPath = "$env:TEMP\course.zip"
-    $ExtractPath = "$PWD\$CourseDir"
+    $TempExtractRoot = "$env:TEMP\extracted-course"
 
+    # === Download Course ZIP ===
+    Write-Host "📦 Downloading course repository..."
+    Invoke-WebRequest -Uri $RepoUrl -OutFile $ZipPath -UseBasicParsing
+
+    # === Prepare temp folder ===
+    if (Test-Path $TempExtractRoot) {
+        Remove-Item $TempExtractRoot -Recurse -Force
+    }
+    New-Item -ItemType Directory -Path $TempExtractRoot | Out-Null
+
+    Write-Host "📂 Extracting ZIP..."
+    Expand-Archive -Path $ZipPath -DestinationPath $TempExtractRoot -Force
+    Remove-Item $ZipPath
+
+    # === Use Extracted GitHub Folder as Course Directory ===
+    $ExtractedFolder = Get-ChildItem $TempExtractRoot | Where-Object { $_.PsIsContainer } | Select-Object -First 1
+
+    if ($null -eq $ExtractedFolder) {
+        Write-Host "❌ ZIP extraction failed: no folder found."
+        exit 1
+    }
+
+    $ExtractPath = $ExtractedFolder.FullName
+    Write-Host "📁 Using extracted folder: $ExtractPath"
+
+    # === Java Version Detection ===
     function Get-JavaMajorVersion {
         try {
             $javaVersionOutput = & java -version 2>&1
-            if ($javaVersionOutput -match '"(\d+)(\.\d+)*"') {
-                return [int]$matches[1]
+            Write-Host "`n🔍 java -version output:`n$javaVersionOutput`n"
+            foreach ($line in $javaVersionOutput) {
+                if ($line -match '"(\d+)(\.\d+)*"') {
+                    return [int]$matches[1]
+                }
             }
         } catch {
             return $null
@@ -40,88 +67,62 @@ function install-course {
         return $null
     }
 
- $JavaInstallDir = "$PWD\$BaseDir\zulu-java"
-$JavaMarkerFile = "$JavaInstallDir\.installed"
+    # === Java Installation ===
+    $JavaInstallDir = Join-Path $ExtractPath "zulu-java"
+    $JavaMarkerFile = Join-Path $JavaInstallDir ".installed"
 
-function Get-JavaMajorVersion {
-    try {
-        $javaVersionOutput = & java -version 2>&1
-        if ($javaVersionOutput -match '"(\d+)(\.\d+)*"') {
-            return [int]$matches[1]
+    function Install-ZuluJRE {
+        Write-Host "⬇️ Downloading Zulu JRE..."
+        $zipFile = "$env:TEMP\zulu-jre.zip"
+        $targetDir = $JavaInstallDir
+
+        Invoke-WebRequest -Uri $ZuluDownloadUrl -OutFile $zipFile -UseBasicParsing
+        Expand-Archive -Path $zipFile -DestinationPath $targetDir
+        Remove-Item $zipFile
+
+        $unzipped = Get-ChildItem $targetDir | Where-Object { $_.PsIsContainer } | Select-Object -First 1
+        $ZuluPath = $unzipped.FullName
+
+        $env:JAVA_HOME = $ZuluPath
+        $env:Path = "$ZuluPath\bin;$env:Path"
+
+        New-Item $JavaMarkerFile -ItemType File | Out-Null
+
+        Write-Host "✅ Java installed at $ZuluPath"
+        java -version
+    }
+
+    $javaMajor = Get-JavaMajorVersion
+
+    if ($javaMajor -ne $JavaRequiredVersion) {
+        if (Test-Path $JavaMarkerFile) {
+            Write-Host "✅ Reusing previously installed Zulu Java from $JavaInstallDir"
+            $ZuluPath = (Get-ChildItem $JavaInstallDir | Where-Object { $_.PsIsContainer } | Select-Object -First 1).FullName
+            $env:JAVA_HOME = $ZuluPath
+            $env:Path = "$ZuluPath\bin;$env:Path"
+        } else {
+            Install-ZuluJRE
         }
-    } catch {
-        return $null
-    }
-    return $null
-}
-
-function Install-ZuluJRE {
-    Write-Host "⬇️ Downloading Zulu JRE..."
-
-    $downloadUrl = "https://cdn.azul.com/zulu/bin/zulu21.30.15-ca-jre21.0.1-win_x64.zip"
-    $zipFile = "$env:TEMP\zulu-jre.zip"
-    $targetDir = "$JavaInstallDir"
-
-    if (Test-Path $JavaMarkerFile) {
-        Write-Host "✅ Zulu JRE already installed."
-        $env:JAVA_HOME = (Get-ChildItem $targetDir | Where-Object { $_.PsIsContainer } | Select-Object -First 1).FullName
-        $env:Path = "$env:JAVA_HOME\bin;$env:Path"
-        return
+    } else {
+        Write-Host "☕ Java $JavaRequiredVersion already available in system."
     }
 
-    Invoke-WebRequest -Uri $downloadUrl -OutFile $zipFile
-    Expand-Archive -Path $zipFile -DestinationPath $targetDir
-    Remove-Item $zipFile
-
-    $unzipped = Get-ChildItem $targetDir | Where-Object { $_.PsIsContainer } | Select-Object -First 1
-    $ZuluPath = "$($unzipped.FullName)"
-
-    $env:JAVA_HOME = $ZuluPath
-    $env:Path = "$ZuluPath\bin;$env:Path"
-
-    # Create marker file
-    New-Item $JavaMarkerFile -ItemType File | Out-Null
-
-    Write-Host "✅ Java installed at $ZuluPath"
-    java -version
-}
-
-$javaMajor = Get-JavaMajorVersion
-
-if (-not $javaMajor -or $javaMajor -ne 21) {
-    Install-ZuluJRE
-} else {
-    Write-Host "☕ Java 21 already available in system."
-}
-
-
-    Write-Host "📦 Downloading course repository..."
-    $ProgressPreference = 'SilentlyContinue'  
-    invoke-WebRequest -Uri $RepoUrl -OutFile $ZipPath -UseBasicParsing
-
-    if (-not (Test-Path $ZipPath)) {
-    Write-Host "❌ Failed to download the course repository. Please check your network or try again."
-    exit 1
-}
-
-    Write-Host "📂 Extracting repository..."
-    Expand-Archive -Path $ZipPath -DestinationPath $ExtractPath
-    Remove-Item $ZipPath
-
-    $inner = Get-ChildItem $ExtractPath | Where-Object { $_.PsIsContainer } | Select-Object -First 1
-    Move-Item "$($inner.FullName)\*" $ExtractPath -Force
-    Remove-Item $inner.FullName -Recurse -Force
-
+    # === Gradle Init ===
     Set-Location $ExtractPath
-    Write-Host "🛠 Setting up course environment..."
+    Write-Host "🛠 Initializing course bundle..."
     Start-Process -FilePath ".\gradlew.bat" -ArgumentList "initBundle" -Wait
 
-    Write-Host "🚀 Starting Liferay instance..."
+    # === Start Liferay ===
     $tomcatPath = Get-ChildItem "$ExtractPath\bundles" -Recurse -Directory | Where-Object { $_.Name -like "tomcat*" } | Select-Object -First 1
-    Start-Process "$($tomcatPath.FullName)\bin\catalina.bat" -ArgumentList "run"
+    if ($tomcatPath) {
+        Write-Host "🚀 Starting Liferay server..."
+        Start-Process "$($tomcatPath.FullName)\bin\catalina.bat" -ArgumentList "run"
+    } else {
+        Write-Host "❌ Tomcat not found inside bundle. Check if initBundle succeeded."
+    }
 }
 
-# Allow direct execution
+# === Allow direct script execution ===
 if ($MyInvocation.InvocationName -eq '.\content-manager-course-setup.ps1' -or $MyInvocation.MyCommand.Name -eq 'content-manager-course-setup.ps1') {
     if ($args.Count -ge 1) {
         install-course $args[0]
