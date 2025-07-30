@@ -40,36 +40,69 @@ function install-course {
         return $null
     }
 
-    function Install-ZuluJRE {
-        Write-Host "⬇️ Downloading Zulu JRE..."
+ $JavaInstallDir = "$PWD\$BaseDir\zulu-java"
+$JavaMarkerFile = "$JavaInstallDir\.installed"
 
-        $downloadUrl = "https://cdn.azul.com/zulu/bin/zulu21.30.15-ca-jre21.0.1-win_x64.zip"
+function Get-JavaMajorVersion {
+    try {
+        $javaVersionOutput = & java -version 2>&1
+        if ($javaVersionOutput -match '"(\d+)(\.\d+)*"') {
+            return [int]$matches[1]
+        }
+    } catch {
+        return $null
+    }
+    return $null
+}
 
-        $zipFile = "$env:TEMP\zulu-jre.zip"
-        $targetDir = "$PWD\$BaseDir\zulu-java"
+function Install-ZuluJRE {
+    Write-Host "⬇️ Downloading Zulu JRE..."
 
-        Invoke-WebRequest -Uri $downloadUrl -OutFile $zipFile
-        Expand-Archive -Path $zipFile -DestinationPath $targetDir
-        Remove-Item $zipFile
+    $downloadUrl = "https://cdn.azul.com/zulu/bin/zulu21.30.15-ca-jre21.0.1-win_x64.zip"
+    $zipFile = "$env:TEMP\zulu-jre.zip"
+    $targetDir = "$JavaInstallDir"
 
-        $unzipped = Get-ChildItem $targetDir | Where-Object { $_.PsIsContainer } | Select-Object -First 1
-        $ZuluPath = "$($unzipped.FullName)"
-
-        $env:JAVA_HOME = $ZuluPath
-        $env:Path = "$ZuluPath\bin;$env:Path"
-
-        Write-Host "✅ Java installed at $ZuluPath"
-        java -version
+    if (Test-Path $JavaMarkerFile) {
+        Write-Host "✅ Zulu JRE already installed."
+        $env:JAVA_HOME = (Get-ChildItem $targetDir | Where-Object { $_.PsIsContainer } | Select-Object -First 1).FullName
+        $env:Path = "$env:JAVA_HOME\bin;$env:Path"
+        return
     }
 
-    $javaMajor = Get-JavaMajorVersion
+    Invoke-WebRequest -Uri $downloadUrl -OutFile $zipFile
+    Expand-Archive -Path $zipFile -DestinationPath $targetDir
+    Remove-Item $zipFile
 
-    if (-not $javaMajor -or $javaMajor -ne 21) {
-        Install-ZuluJRE
-    }
+    $unzipped = Get-ChildItem $targetDir | Where-Object { $_.PsIsContainer } | Select-Object -First 1
+    $ZuluPath = "$($unzipped.FullName)"
+
+    $env:JAVA_HOME = $ZuluPath
+    $env:Path = "$ZuluPath\bin;$env:Path"
+
+    # Create marker file
+    New-Item $JavaMarkerFile -ItemType File | Out-Null
+
+    Write-Host "✅ Java installed at $ZuluPath"
+    java -version
+}
+
+$javaMajor = Get-JavaMajorVersion
+
+if (-not $javaMajor -or $javaMajor -ne 21) {
+    Install-ZuluJRE
+} else {
+    Write-Host "☕ Java 21 already available in system."
+}
+
 
     Write-Host "📦 Downloading course repository..."
-    Invoke-WebRequest -Uri $RepoUrl -OutFile $ZipPath
+    $ProgressPreference = 'SilentlyContinue'  
+    nvoke-WebRequest -Uri $RepoUrl -OutFile $ZipPath -UseBasicParsing
+
+    if (-not (Test-Path $ZipPath)) {
+    Write-Host "❌ Failed to download the course repository. Please check your network or try again."
+    exit 1
+}
 
     Write-Host "📂 Extracting repository..."
     Expand-Archive -Path $ZipPath -DestinationPath $ExtractPath
