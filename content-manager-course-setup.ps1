@@ -97,7 +97,7 @@ if (-not $javaMajor -or $javaMajor -ne 21) {
 
     Write-Host "📦 Downloading course repository..."
     $ProgressPreference = 'SilentlyContinue'  
-    nvoke-WebRequest -Uri $RepoUrl -OutFile $ZipPath -UseBasicParsing
+    invoke-WebRequest -Uri $RepoUrl -OutFile $ZipPath -UseBasicParsing
 
     if (-not (Test-Path $ZipPath)) {
     Write-Host "❌ Failed to download the course repository. Please check your network or try again."
