@@ -36,6 +36,15 @@ case "$COURSE_KEY" in
   --course2)
     REPO_URL="https://github.com/liferay/liferay-course-frontend-client-extensions/archive/refs/heads/main.zip"
     ;;
+  --publishing-tool-and-content-lifecycle)
+    REPO_URL="https://github.com/liferay/liferay-course-publishing-tool-and-content-lifecycle/archive/refs/heads/main.zip"
+    ;;
+  --pages-navigation)
+    REPO_URL="https://github.com/liferay/liferay-course-pages-navigation/archive/refs/heads/main.zip"
+    ;;
+  --seo)
+    REPO_URL="https://github.com/liferay/liferay-course-search-engine-optimization/archive/refs/heads/main.zip"
+    ;;
   *)
     echo "❌ Invalid course option: $COURSE_KEY"
     echo "Use: --course1 | --course2"
