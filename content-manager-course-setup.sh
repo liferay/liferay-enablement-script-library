@@ -172,8 +172,20 @@ fetch "$REPO_URL" "$REPO_ZIP"
 # Determine top-level directory name from the zip BEFORE extracting
 REPO_TOPDIR=$(unzip -Z -1 "$REPO_ZIP" | head -n1 | cut -d/ -f1)
 
+# Rename to drop "-main" if present
+CLEAN_NAME="${REPO_TOPDIR%-main}"
+
 unzip -q "$REPO_ZIP"
 rm "$REPO_ZIP"
+
+
+# Remove existing target if it exists to avoid "move into dir"
+if [[ -d "$CLEAN_NAME" && "$REPO_TOPDIR" != "$CLEAN_NAME" ]]; then
+  rm -rf "$CLEAN_NAME"
+fi
+
+mv "$REPO_TOPDIR" "$CLEAN_NAME"
+REPO_TOPDIR="$CLEAN_NAME"
 
 # === INIT BUNDLE (inside the extracted repo) ===
 cd "$REPO_TOPDIR"

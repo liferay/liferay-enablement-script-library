@@ -1,3 +1,4 @@
 *.bin
 *.lock
 *.zip
+.DS_Store
