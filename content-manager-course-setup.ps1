@@ -140,9 +140,8 @@ function Get-JavaMajorVersion {
     # === Run Gradle Init ===
     Set-Location $ExtractPath
     Write-Host "🛠 Running Gradle init..."
-    Start-Process -FilePath ".\gradlew.bat" -ArgumentList "initBundle" -Wait
 
-    $p = Start-Process -FilePath ".\gradlew.bat" -ArgumentList "initBundle" -Wait -PassThru -NoNewWindow
+    $p = Start-Process -FilePath ".\gradlew.bat" -ArgumentList "initBundle  --no-daemon --console=plain" -Wait -PassThru -NoNewWindow
         if ($p.ExitCode -ne 0) {
             Write-Host "❌ Gradle failed with exit code $($p.ExitCode)"
             exit $p.ExitCode
