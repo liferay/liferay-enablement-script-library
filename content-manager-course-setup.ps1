@@ -116,9 +116,12 @@ function Install-Course {
     }
 
     # === DOWNLOAD & EXTRACT REPO (quiet) ===
+
     $ZipPath = Join-Path $env:TEMP "course.zip"
+
     Write-Host "📦 Downloading course repository..."
-    Invoke-QuietDownload -Url $RepoUrl -OutFile $ZipPath
+    $ProgressPreference = 'SilentlyContinue' 
+    Invoke-WebRequest -Url $RepoUrl -OutFile $ZipPath -UseBasicParsing
 
     Expand-ArchiveQuiet -ZipPath $ZipPath -DestinationPath $PWD
     Remove-Item $ZipPath -Force
