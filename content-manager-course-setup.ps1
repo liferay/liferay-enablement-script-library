@@ -10,12 +10,6 @@ function install-course {
     $ZuluDownloadUrl = "https://cdn.azul.com/zulu/bin/zulu21.30.15-ca-jre21.0.1-win_x64.zip"
 
     switch ($CourseKey) {
-        "--course1" {
-            $RepoUrl = "https://github.com/liferay/liferay-course-backend-client-extensions/archive/refs/heads/main.zip"
-        }
-        "--course2" {
-            $RepoUrl = "https://github.com/liferay/liferay-course-frontend-client-extensions/archive/refs/heads/main.zip"
-        }
         "--publishing-tool-and-content-lifecycle" {
             $RepoUrl = "https://github.com/liferay/liferay-course-publishing-tool-and-content-lifecycle/archive/refs/heads/main.zip"
         }
@@ -24,6 +18,9 @@ function install-course {
         }
         "--seo" {
             $RepoUrl = "https://github.com/liferay/liferay-course-search-engine-optimization/archive/refs/heads/main.zip"
+        }
+        "--content-search" {
+            $RepoUrl = "https://github.com/liferay/liferay-course-content-search/archive/refs/heads/main.zip"
         }
         Default {
             Write-Host "❌ Invalid or missing argument. Use --course1 or --course2."

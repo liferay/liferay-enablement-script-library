@@ -30,12 +30,6 @@ if [[ "$COURSE_KEY" == "--help" ]]; then
 fi
 
 case "$COURSE_KEY" in
-  --course1)
-    REPO_URL="https://github.com/liferay/liferay-course-backend-client-extensions/archive/refs/heads/main.zip"
-    ;;
-  --course2)
-    REPO_URL="https://github.com/liferay/liferay-course-frontend-client-extensions/archive/refs/heads/main.zip"
-    ;;
   --publishing-tool-and-content-lifecycle)
     REPO_URL="https://github.com/liferay/liferay-course-publishing-tool-and-content-lifecycle/archive/refs/heads/main.zip"
     ;;
@@ -44,6 +38,9 @@ case "$COURSE_KEY" in
     ;;
   --seo)
     REPO_URL="https://github.com/liferay/liferay-course-search-engine-optimization/archive/refs/heads/main.zip"
+    ;;
+    --content-search)
+    REPO_URL="https://github.com/liferay/liferay-course-content-search/archive/refs/heads/main.zip"
     ;;
   *)
     echo "❌ Invalid course option: $COURSE_KEY"
