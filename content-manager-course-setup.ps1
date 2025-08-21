@@ -60,26 +60,38 @@ function install-course {
 function Get-JavaMajorVersion {
     # Returns [int] major version (e.g., 21) or $null if not found
     try {
-        $javaCmd = Get-Command java -ErrorAction Stop
+        $javaCmd = (Get-Command java -ErrorAction Stop).Source
     } catch {
         return $null
     }
 
-    $out = & $javaCmd.Source -version 2>&1 | Out-String
+    # Run java -version but redirect both stderr and stdout to files to avoid NativeCommandError
+    $tmpErr = [System.IO.Path]::GetTempFileName()
+    $tmpOut = [System.IO.Path]::GetTempFileName()
+    try {
+        $p = Start-Process -FilePath $javaCmd -ArgumentList '-version' `
+              -NoNewWindow -Wait -PassThru `
+              -RedirectStandardError $tmpErr -RedirectStandardOutput $tmpOut
+
+        $out = (Get-Content $tmpOut -Raw) + "`n" + (Get-Content $tmpErr -Raw)
+    } finally {
+        Remove-Item $tmpErr,$tmpOut -ErrorAction SilentlyContinue
+    }
+
     Write-Host "`n🔍 java -version output:`n$out"
 
-    # 1) Try "version \"21.0.8\"" pattern (quoted)
+    # 1) Try quoted form:  version "21.0.8"
     $m = [regex]::Match($out, '(?im)version\s+"?(?<v>\d+(?:\.\d+){0,3})')
     if (-not $m.Success) {
-        # 2) Try "openjdk 21 ..." (unquoted)
-        $m = [regex]::Match($out, '(?im)^openjdk\s+(?<v>\d+(?:\.\d+){0,3})\b')
+        # 2) Try unquoted form: openjdk 21 ...
+        $m = [regex]::Match($out, '(?im)^\s*openjdk\s+(?<v>\d+(?:\.\d+){0,3})\b')
     }
     if (-not $m.Success) { return $null }
 
     $ver = $m.Groups['v'].Value
     $parts = $ver.Split('.')
 
-    # Normalize legacy 1.x (e.g., 1.8.0_202 -> 8)
+    # Normalize legacy 1.x (e.g., 1.8.0_xxx -> 8)
     if ($parts[0] -eq '1' -and $parts.Count -ge 2) {
         return [int]$parts[1]
     }
