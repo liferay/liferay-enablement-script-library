@@ -42,6 +42,12 @@ case "$COURSE_KEY" in
     --content-search)
     REPO_URL="https://github.com/liferay/liferay-course-content-search/archive/refs/heads/main.zip"
     ;;
+    --personalized-experiences)
+    REPO_URL="https://github.com/liferay/liferay-course-personalized-experiences/archive/refs/heads/main.zip"
+    ;;
+    --assets-contents)
+    REPO_URL="https://github.com/liferay/liferay-course-personalized-experiences/archive/refs/heads/main.zip"
+    ;;
   *)
     echo "❌ Invalid course option: $COURSE_KEY"
     echo "Use: --course1 | --course2"

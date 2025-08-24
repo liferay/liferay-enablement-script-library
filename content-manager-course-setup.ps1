@@ -22,6 +22,12 @@ function install-course {
         "--content-search" {
             $RepoUrl = "https://github.com/liferay/liferay-course-content-search/archive/refs/heads/main.zip"
         }
+        "--personalized-experiences" {
+            $RepoUrl = "https://github.com/liferay/liferay-course-personalized-experiences/archive/refs/heads/main.zip"
+        }
+        "--assets-contents" {
+            $RepoUrl = "https://github.com/liferay/liferay-course-assets-and-content/archive/refs/heads/main.zip"
+        }
         Default {
             Write-Host "❌ Invalid or missing argument. Use --course1 or --course2."
             return
