@@ -28,6 +28,9 @@ function install-course {
         "--assets-contents" {
             $RepoUrl = "https://github.com/liferay/liferay-course-assets-and-content/archive/refs/heads/main.zip"
         }
+        "--bewl" {
+            $RepoUrl = "https://github.com/liferay/liferay-course-building-enterprise-websites/archive/refs/heads/master.zip"
+        }
         Default {
             Write-Host "❌ Invalid or missing argument. Use --course1 or --course2."
             return
