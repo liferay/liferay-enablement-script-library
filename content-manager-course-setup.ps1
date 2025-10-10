@@ -16,7 +16,7 @@ function install-course {
         "--pages-navigation" {
             $RepoUrl = "https://github.com/liferay/liferay-course-pages-navigation/archive/refs/heads/main.zip"
         }
-        "--seo" {
+        "--search-engine-optimization" {
             $RepoUrl = "https://github.com/liferay/liferay-course-search-engine-optimization/archive/refs/heads/main.zip"
         }
         "--content-search" {
@@ -25,7 +25,7 @@ function install-course {
         "--personalized-experiences" {
             $RepoUrl = "https://github.com/liferay/liferay-course-personalized-experiences/archive/refs/heads/main.zip"
         }
-        "--assets-contents" {
+        "--assets-and-content" {
             $RepoUrl = "https://github.com/liferay/liferay-course-assets-and-content/archive/refs/heads/main.zip"
         }
         "--bewl" {
