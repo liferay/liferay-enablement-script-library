@@ -48,7 +48,7 @@ case "$COURSE_KEY" in
     --assets-and-content)
     REPO_URL="https://github.com/liferay/liferay-course-assets-and-content/archive/refs/heads/main.zip"
     ;;
-    --bewl)
+    --building-enterprise-websites)
     REPO_URL="https://github.com/liferay/liferay-course-building-enterprise-websites/archive/refs/heads/master.zip"
     ;;
   *)

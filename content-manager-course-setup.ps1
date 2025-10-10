@@ -28,7 +28,7 @@ function install-course {
         "--assets-and-content" {
             $RepoUrl = "https://github.com/liferay/liferay-course-assets-and-content/archive/refs/heads/main.zip"
         }
-        "--bewl" {
+        "--building-enterprise-websites" {
             $RepoUrl = "https://github.com/liferay/liferay-course-building-enterprise-websites/archive/refs/heads/master.zip"
         }
         Default {
