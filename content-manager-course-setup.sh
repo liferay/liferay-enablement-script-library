@@ -49,7 +49,7 @@ case "$COURSE_KEY" in
     REPO_URL="https://github.com/liferay/liferay-course-assets-and-content/archive/refs/heads/main.zip"
     ;;
     --building-enterprise-websites)
-    REPO_URL="https://github.com/liferay/liferay-course-building-enterprise-websites/archive/refs/heads/master.zip"
+    REPO_URL="https://github.com/liferay/liferay-course-building-enterprise-websites/archive/refs/heads/main.zip"
     ;;
   *)
     echo "❌ Invalid course option: $COURSE_KEY"

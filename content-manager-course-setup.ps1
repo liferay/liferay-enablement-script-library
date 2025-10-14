@@ -29,7 +29,7 @@ function install-course {
             $RepoUrl = "https://github.com/liferay/liferay-course-assets-and-content/archive/refs/heads/main.zip"
         }
         "--building-enterprise-websites" {
-            $RepoUrl = "https://github.com/liferay/liferay-course-building-enterprise-websites/archive/refs/heads/master.zip"
+            $RepoUrl = "https://github.com/liferay/liferay-course-building-enterprise-websites/archive/refs/heads/main.zip"
         }
         Default {
             Write-Host "❌ Invalid or missing argument. Use --course1 or --course2."
