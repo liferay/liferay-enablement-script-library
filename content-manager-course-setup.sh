@@ -51,6 +51,9 @@ case "$COURSE_KEY" in
     --building-enterprise-websites)
     REPO_URL="https://github.com/liferay/liferay-course-building-enterprise-websites/archive/refs/heads/main.zip"
     ;;
+    --foundations-of-commerce)
+    REPO_URL="https://github.com/liferay/liferay-course-foundations-of-commerce/archive/refs/heads/main.zip"
+    ;;
   *)
     echo "❌ Invalid course option: $COURSE_KEY"
     echo "Use: --course1 | --course2"
