@@ -60,6 +60,9 @@ case "$COURSE_KEY" in
     --product-management)
     REPO_URL="https://github.com/liferay/liferay-course-product-management/archive/refs/heads/main.zip"
     ;;
+    --pricing)
+    REPO_URL="https://github.com/liferay/liferay-course-commerce-pricing/archive/refs/heads/main.zip"
+    ;;
   *)
     echo "❌ Invalid course option: $COURSE_KEY"
     echo "Use: --course1 | --course2"
