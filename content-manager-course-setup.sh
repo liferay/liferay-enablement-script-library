@@ -58,7 +58,19 @@ case "$COURSE_KEY" in
     REPO_URL="https://github.com/liferay/liferay-course-commerce-users-and-accounts/archive/refs/heads/main.zip"
     ;;
     --product-management)
-    REPO_URL="https://github.com/liferay/liferay-course-product-management/archive/refs/heads/main.zip"
+    REPO_URL="https://github.com/liferay/liferay-course-commerce-product-management/archive/refs/heads/main.zip"
+    ;;
+    --inventory-management)
+    REPO_URL="https://github.com/liferay/liferay-course-commerce-inventory-management/archive/refs/heads/main.zip"
+    ;;
+    --pricing)
+    REPO_URL="https://github.com/liferay/liferay-course-commerce-pricing/archive/refs/heads/main.zip"
+    ;;
+    --order-management)
+    REPO_URL="https://github.com/liferay/liferay-course-commerce-order-management/archive/refs/heads/main.zip"
+    ;;
+    --storefronts)
+    REPO_URL="https://github.com/liferay/liferay-course-commerce-storefronts/archive/refs/heads/main.zip"
     ;;
   *)
     echo "❌ Invalid course option: $COURSE_KEY"
