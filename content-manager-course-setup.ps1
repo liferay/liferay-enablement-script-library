@@ -40,8 +40,8 @@ function install-course {
         "--product-management" {
             $RepoUrl = "https://github.com/liferay/liferay-course-commerce-product-management/archive/refs/heads/main.zip"
         }
-        "--inventory" {
-            $RepoUrl = "https://github.com/liferay/liferay-course-commerce-inventory/archive/refs/heads/main.zip"
+        "--inventory-management" {
+            $RepoUrl = "https://github.com/liferay/liferay-course-commerce-inventory-management/archive/refs/heads/main.zip"
         }
         "--pricing" {
             $RepoUrl = "https://github.com/liferay/liferay-course-commerce-pricing/archive/refs/heads/main.zip"
