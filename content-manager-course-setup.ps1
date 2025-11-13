@@ -38,7 +38,19 @@ function install-course {
             $RepoUrl = "https://github.com/liferay/liferay-course-commerce-users-and-accounts/archive/refs/heads/main.zip"
         }
         "--product-management" {
-            $RepoUrl = "https://github.com/liferay/liferay-course-product-management/archive/refs/heads/main.zip"
+            $RepoUrl = "https://github.com/liferay/liferay-course-commerce-product-management/archive/refs/heads/main.zip"
+        }
+        "--inventory" {
+            $RepoUrl = "https://github.com/liferay/liferay-course-commerce-inventory/archive/refs/heads/main.zip"
+        }
+        "--pricing" {
+            $RepoUrl = "https://github.com/liferay/liferay-course-commerce-pricing/archive/refs/heads/main.zip"
+        }
+        "--order-management" {
+            $RepoUrl = "https://github.com/liferay/liferay-course-commerce-order-management/archive/refs/heads/main.zip"
+        }
+        "--storefronts" {
+            $RepoUrl = "https://github.com/liferay/liferay-course-commerce-storefronts/archive/refs/heads/main.zip"
         }
         Default {
             Write-Host "❌ Invalid or missing argument. Use --course1 or --course2."
