@@ -52,6 +52,9 @@ function install-course {
         "--storefronts" {
             $RepoUrl = "https://github.com/liferay/liferay-course-commerce-storefronts/archive/refs/heads/main.zip"
         }
+        "--content-management-system" {
+            $RepoUrl = "https://github.com/liferay/liferay-course-content-management-system/archive/refs/heads/main.zip"
+        }
         Default {
             Write-Host "❌ Invalid or missing argument. Use --course1 or --course2."
             return
