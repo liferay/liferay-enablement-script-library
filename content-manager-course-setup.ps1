@@ -25,8 +25,8 @@ function install-course {
         "--personalized-experiences" {
             $RepoUrl = "https://github.com/liferay/liferay-course-personalized-experiences/archive/refs/heads/main.zip"
         }
-        "--assets-and-content" {
-            $RepoUrl = "https://github.com/liferay/liferay-course-assets-and-content/archive/refs/heads/main.zip"
+        "--classic-cms" {
+            $RepoUrl = "https://github.com/liferay/liferay-course-classic-cms/archive/refs/heads/main.zip"
         }
         "--building-enterprise-websites" {
             $RepoUrl = "https://github.com/liferay/liferay-course-building-enterprise-websites/archive/refs/heads/main.zip"
