@@ -4,7 +4,7 @@ Liferay's Course Launcher tool automatically prepares your system and sets up a 
 
 This tool:
 
-* Checks if Java 21 is installed in your system. If not, it installs Zulu JRE 21 from Azul.
+* Checks if Java 21 is installed in your system. If not, it installs Zulu JDK 21 from Azul.
 * Downloads and configures the course workspace.
 * Initializes the local Liferay DXP bundle.
 

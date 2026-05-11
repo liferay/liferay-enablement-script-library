@@ -7,7 +7,7 @@ function install-course {
 
     # === CONFIGURATION ===
     $JavaRequiredVersion = 21
-    $ZuluDownloadUrl = "https://cdn.azul.com/zulu/bin/zulu21.30.15-ca-jre21.0.1-win_x64.zip"
+    $ZuluDownloadUrl = "https://cdn.azul.com/zulu/bin/zulu21.30.15-ca-jdk21.0.1-win_x64.zip"
 
     switch ($CourseKey) {
         "--publishing-tool-and-content-lifecycle" {
@@ -65,7 +65,7 @@ function install-course {
 
     # === Download ZIP ===
     Write-Host "📦 Downloading course repository..."
-    $ProgressPreference = 'SilentlyContinue' 
+    $ProgressPreference = 'SilentlyContinue'
     Invoke-WebRequest -Uri $RepoUrl -OutFile $ZipPath -UseBasicParsing
 
     # === Extract ZIP directly here ===
@@ -132,11 +132,11 @@ function Get-JavaMajorVersion {
     $JavaInstallDir = Join-Path $ExtractPath "zulu-java"
     $JavaMarkerFile = Join-Path $JavaInstallDir ".installed"
 
-    function Install-ZuluJRE {
-        Write-Host "⬇️ Installing Zulu JRE inside: $JavaInstallDir"
-        $zipFile = "$env:TEMP\zulu-jre.zip"
+    function Install-ZuluJDK {
+        Write-Host "⬇️ Installing Zulu JDK inside: $JavaInstallDir"
+        $zipFile = "$env:TEMP\zulu-jdk.zip"
 
-        $ProgressPreference = 'SilentlyContinue' 
+        $ProgressPreference = 'SilentlyContinue'
         Invoke-WebRequest -Uri $ZuluDownloadUrl -OutFile $zipFile -UseBasicParsing
         Expand-Archive -Path $zipFile -DestinationPath $JavaInstallDir
         Remove-Item $zipFile
@@ -161,7 +161,7 @@ function Get-JavaMajorVersion {
             $env:JAVA_HOME = $ZuluPath
             $env:Path = "$ZuluPath\bin;$env:Path"
         } else {
-            Install-ZuluJRE
+            Install-ZuluJDK
         }
     } else {
         Write-Host "☕ System Java version $javaMajor is OK."

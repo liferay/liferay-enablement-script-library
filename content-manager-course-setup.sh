@@ -140,18 +140,18 @@ fetch_text() {
   fi
 }
 
-install_zulu_jre() {
+install_zulu_jdk() {
   local ARCH
   ARCH=$(uname -m)
   [[ "$ARCH" == "x86_64" ]] && ARCH="x64"
   [[ "$ARCH" =~ (arm64|aarch64) ]] && ARCH="aarch64"
 
-  echo "🌐 Fetching Zulu JRE URL..."
+  echo "🌐 Fetching Zulu JDK URL..."
   local ZULU_URL
-  ZULU_URL=$(fetch_text "https://api.azul.com/zulu/download/community/v1.0/bundles/latest/?java_version=${JAVA_REQUIRED_VERSION}&os=${OS}&arch=${ARCH}&ext=tar.gz&bundle_type=jre&javafx=false&release_status=ga&hw_bitness=64" \
+  ZULU_URL=$(fetch_text "https://api.azul.com/zulu/download/community/v1.0/bundles/latest/?java_version=${JAVA_REQUIRED_VERSION}&os=${OS}&arch=${ARCH}&ext=tar.gz&bundle_type=jdk&javafx=false&release_status=ga&hw_bitness=64" \
     | grep -oE '"download_url"[ ]*:[ ]*"[^"]+"' | head -n 1 | cut -d '"' -f4)
 
-  echo "⬇️ Downloading Zulu JRE..."
+  echo "⬇️ Downloading Zulu JDK..."
   mkdir -p "$JAVA_DIR"
   local TMP_TAR="${RUNTIME_DIR}/zulu.tar.gz"
   mkdir -p "$RUNTIME_DIR"
@@ -166,7 +166,7 @@ install_zulu_jre() {
 }
 
 use_or_install_java() {
-  # Prefer the managed per-user JRE if present (idempotent across runs)
+  # Prefer the managed per-user JDK if present (idempotent across runs)
   if [[ -x "$JAVA_DIR/bin/java" ]]; then
     export JAVA_HOME="$JAVA_DIR"
     export PATH="$JAVA_HOME/bin:$PATH"
@@ -183,8 +183,8 @@ use_or_install_java() {
     fi
   fi
 
-  # Else, install our managed JRE 21
-  install_zulu_jre
+  # Else, install our managed JDK 21
+  install_zulu_jdk
 }
 
 # === TOOLING ===
