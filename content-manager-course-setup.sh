@@ -149,7 +149,7 @@ install_zulu_jdk() {
   echo "🌐 Fetching Zulu JDK URL..."
   local ZULU_URL
   ZULU_URL=$(fetch_text "https://api.azul.com/zulu/download/community/v1.0/bundles/latest/?java_version=${JAVA_REQUIRED_VERSION}&os=${OS}&arch=${ARCH}&ext=tar.gz&bundle_type=jdk&javafx=false&release_status=ga&hw_bitness=64" \
-    | grep -oE '"download_url"[ ]*:[ ]*"[^"]+"' | head -n 1 | cut -d '"' -f4)
+    | grep -oE '"url"[ ]*:[ ]*"[^"]+"' | head -n 1 | cut -d '"' -f4)
 
   echo "⬇️ Downloading Zulu JDK..."
   mkdir -p "$JAVA_DIR"
