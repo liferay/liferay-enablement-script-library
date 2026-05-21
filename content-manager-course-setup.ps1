@@ -190,11 +190,38 @@ function Get-JavaMajorVersion {
     Set-Location $ExtractPath
     Write-Host "🛠 Running Gradle init..."
 
-    $p = Start-Process -FilePath ".\gradlew.bat" -ArgumentList "initBundle  --no-daemon --console=plain" -Wait -PassThru -NoNewWindow
-        if ($p.ExitCode -ne 0) {
-            Write-Host "❌ Gradle failed with exit code $($p.ExitCode)"
-            exit $p.ExitCode
+    $gradleMaxAttempts = 3
+    $gradleSuccess = $false
+
+    for ($attempt = 1; $attempt -le $gradleMaxAttempts; $attempt++) {
+        $gradleLines = @()
+        & .\gradlew.bat initBundle --no-daemon --console=plain 2>&1 |
+            ForEach-Object { "$_" } |
+            Tee-Object -Variable gradleLines
+        $gradleExit = $LASTEXITCODE
+        $gradleOutput = $gradleLines -join "`n"
+
+        if ($gradleExit -eq 0) {
+            $gradleSuccess = $true
+            break
         }
+
+        if ($attempt -lt $gradleMaxAttempts) {
+            if ($gradleOutput -match "verifyBundle|checksum") {
+                Write-Host "❌ Bundle download failed (checksum mismatch). This is usually caused by a slow or interrupted connection. Retrying... (attempt $attempt of $gradleMaxAttempts)"
+            } else {
+                Write-Host "❌ Gradle initBundle failed (exit code $gradleExit). Retrying... (attempt $attempt of $gradleMaxAttempts)"
+            }
+            Write-Host "🧹 Cleaning partial download artifacts..."
+            Remove-Item -Path (Join-Path $ExtractPath "bundles") -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Item -Path (Join-Path $ExtractPath ".gradle") -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    if (-not $gradleSuccess) {
+        Write-Host "❌ Setup failed after $gradleMaxAttempts attempts. Please check your internet connection and try running the script again."
+        exit 1
+    }
 
     # Dynamically locate the Tomcat directory inside bundles\
     $TomcatDir = Get-ChildItem -Path (Join-Path $ExtractPath "bundles") -Directory -Filter "tomcat-*" -ErrorAction SilentlyContinue |

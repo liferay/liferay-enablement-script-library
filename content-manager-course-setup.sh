@@ -230,7 +230,39 @@ REPO_TOPDIR="$CLEAN_NAME"
 cd "$REPO_TOPDIR"
 echo "🛠 Setting up course environment..."
 chmod +x ./gradlew || true
-./gradlew initBundle
+# === INIT BUNDLE with retry (up to 3 attempts) ===
+GRADLE_MAX_ATTEMPTS=3
+GRADLE_SUCCESS=false
+GRADLE_TMP=$(mktemp)
+
+for attempt in $(seq 1 $GRADLE_MAX_ATTEMPTS); do
+  set +e
+  ./gradlew initBundle 2>&1 | tee "$GRADLE_TMP"
+  GRADLE_EXIT=${PIPESTATUS[0]}
+  set -e
+
+  if [[ $GRADLE_EXIT -eq 0 ]]; then
+    GRADLE_SUCCESS=true
+    break
+  fi
+
+  if [[ $attempt -lt $GRADLE_MAX_ATTEMPTS ]]; then
+    if grep -qiE "verifyBundle|checksum" "$GRADLE_TMP"; then
+      echo "❌ Bundle download failed (checksum mismatch). This is usually caused by a slow or interrupted connection. Retrying... (attempt $attempt of $GRADLE_MAX_ATTEMPTS)"
+    else
+      echo "❌ Gradle initBundle failed (exit code $GRADLE_EXIT). Retrying... (attempt $attempt of $GRADLE_MAX_ATTEMPTS)"
+    fi
+    echo "🧹 Cleaning partial download artifacts..."
+    rm -rf bundles .gradle
+  fi
+done
+
+rm -f "$GRADLE_TMP"
+
+if [[ "$GRADLE_SUCCESS" != "true" ]]; then
+  echo "❌ Setup failed after $GRADLE_MAX_ATTEMPTS attempts. Please check your internet connection and try running the script again."
+  exit 1
+fi
 
 # Dynamically locate the Tomcat directory inside bundles/
 TOMCAT_DIR=$(find bundles -maxdepth 1 -type d -name 'tomcat-*' | head -n1)
