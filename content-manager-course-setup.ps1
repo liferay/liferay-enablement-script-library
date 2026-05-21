@@ -150,6 +150,25 @@ function Get-JavaMajorVersion {
         New-Item $JavaMarkerFile -ItemType File | Out-Null
         Write-Host "✅ Java installed at $ZuluPath"
         java -version
+
+        # Persist JAVA_HOME for future sessions (idempotent)
+        $existingJavaHome = [System.Environment]::GetEnvironmentVariable("JAVA_HOME", [System.EnvironmentVariableTarget]::User)
+        if (-not $existingJavaHome) {
+            [System.Environment]::SetEnvironmentVariable("JAVA_HOME", $ZuluPath, [System.EnvironmentVariableTarget]::User)
+            Write-Host "📝 JAVA_HOME persisted to user environment."
+        } else {
+            Write-Host "ℹ️  JAVA_HOME already set in user environment ($existingJavaHome), skipping persistence."
+        }
+        # Persist PATH update for future sessions (idempotent)
+        $userPath = [System.Environment]::GetEnvironmentVariable("PATH", [System.EnvironmentVariableTarget]::User)
+        $zuluBin = "$ZuluPath\bin"
+        if ($userPath -notlike "*$zuluBin*") {
+            [System.Environment]::SetEnvironmentVariable("PATH", "$zuluBin;$userPath", [System.EnvironmentVariableTarget]::User)
+            Write-Host "📝 $zuluBin added to user PATH."
+        } else {
+            Write-Host "ℹ️  $zuluBin already in user PATH, skipping."
+        }
+        Write-Host "ℹ️  Open a new terminal for the JAVA_HOME and PATH changes to take effect."
     }
 
     $javaMajor = Get-JavaMajorVersion

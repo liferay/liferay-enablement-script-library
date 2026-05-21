@@ -163,6 +163,15 @@ install_zulu_jre() {
   export PATH="$JAVA_HOME/bin:$PATH"
   echo "✅ Java installed at $JAVA_HOME"
   "$JAVA_HOME/bin/java" -version
+
+  # Persist JAVA_HOME and PATH update for future sessions
+  for RC in "${HOME}/.bashrc" "${HOME}/.zshrc" "${HOME}/.profile"; do
+    if [[ -f "$RC" ]] && ! grep -qF "JAVA_HOME" "$RC"; then
+      printf '\nexport JAVA_HOME="%s"\nexport PATH="$JAVA_HOME/bin:$PATH"\n' "$JAVA_HOME" >> "$RC"
+      echo "📝 Persisted JAVA_HOME to $RC"
+    fi
+  done
+  echo "ℹ️  Open a new terminal or run 'source ~/.bashrc' (or ~/.zshrc) for the PATH changes to take effect."
 }
 
 use_or_install_java() {
