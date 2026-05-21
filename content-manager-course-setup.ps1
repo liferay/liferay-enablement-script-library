@@ -176,6 +176,20 @@ function Get-JavaMajorVersion {
             Write-Host "❌ Gradle failed with exit code $($p.ExitCode)"
             exit $p.ExitCode
         }
+
+    # Dynamically locate the Tomcat directory inside bundles\
+    $TomcatDir = Get-ChildItem -Path (Join-Path $ExtractPath "bundles") -Directory -Filter "tomcat-*" -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+    if ($null -eq $TomcatDir) {
+        Write-Host "⚠️  Could not find a Tomcat directory under bundles\. CATALINA_HOME not set."
+    } else {
+        $env:CATALINA_HOME = $TomcatDir.FullName
+        Write-Host "✅ CATALINA_HOME set to $($env:CATALINA_HOME)"
+        # Persist for future sessions (user scope, survives reboots)
+        [System.Environment]::SetEnvironmentVariable("CATALINA_HOME", $TomcatDir.FullName, [System.EnvironmentVariableTarget]::User)
+        Write-Host "📝 CATALINA_HOME persisted to user environment."
+    }
+
     Write-Host "✅ Done. Liferay bundle initialized. You may proceed to start your Liferay application now."
 return
 }

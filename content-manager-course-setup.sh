@@ -223,4 +223,20 @@ echo "🛠 Setting up course environment..."
 chmod +x ./gradlew || true
 ./gradlew initBundle
 
+# Dynamically locate the Tomcat directory inside bundles/
+TOMCAT_DIR=$(find bundles -maxdepth 1 -type d -name 'tomcat-*' | head -n1)
+if [[ -z "$TOMCAT_DIR" ]]; then
+  echo "⚠️  Could not find a Tomcat directory under bundles/. CATALINA_HOME not set."
+else
+  export CATALINA_HOME="$(pwd)/$TOMCAT_DIR"
+  echo "✅ CATALINA_HOME set to $CATALINA_HOME"
+  # Persist for future sessions
+  for RC in "${HOME}/.bashrc" "${HOME}/.zshrc" "${HOME}/.profile"; do
+    if [[ -f "$RC" ]] && ! grep -qF "CATALINA_HOME" "$RC"; then
+      printf '\nexport CATALINA_HOME="%s"\n' "$CATALINA_HOME" >> "$RC"
+      echo "📝 Persisted CATALINA_HOME to $RC"
+    fi
+  done
+fi
+
 echo "✅ Done. Liferay bundle initialized. You may proceed to start your Liferay application now."
