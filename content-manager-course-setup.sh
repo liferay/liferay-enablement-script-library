@@ -6,12 +6,48 @@ JAVA_REQUIRED_VERSION="21.0.1"
 RUNTIME_DIR="${HOME}/.liferay-course-runtime"
 JAVA_DIR="${RUNTIME_DIR}/zulu-java-21"
 
+# === COURSES (grouped by learning path) ===
+COURSES_CONTENT_MANAGER=(
+  --publishing-tool-and-content-lifecycle
+  --pages-navigation
+  --search-engine-optimization
+  --content-search
+  --personalized-experiences
+  --classic-cms
+  --content-management-system
+)
+
+COURSES_SITE_BUILDING=(
+  --building-enterprise-websites
+)
+
+COURSES_COMMERCE=(
+  --foundations-of-commerce
+  --users-and-accounts
+  --product-management
+  --inventory-management
+  --pricing
+  --order-management
+  --storefronts
+)
+
+list_course_keys() {
+  local joined
+  printf -v joined '%s | ' "${COURSES_CONTENT_MANAGER[@]}"
+  echo "  Content Manager: ${joined% | }"
+  printf -v joined '%s | ' "${COURSES_SITE_BUILDING[@]}"
+  echo "  Site Building:   ${joined% | }"
+  printf -v joined '%s | ' "${COURSES_COMMERCE[@]}"
+  echo "  Commerce:        ${joined% | }"
+}
+
 # === ARGUMENTS ===
 if [[ $# -ne 2 ]]; then
   echo "❌ Wrong usage."
   echo "Usage:"
-  echo "  bash -c \"\$(curl -fsSL <url>)\" -- --course1 mac"
-  echo "  bash -c \"\$(curl -fsSL <url>)\" -- --course2 linux"
+  echo "  bash -c \"\$(curl -fsSL <url>)\" -- <course-key> mac|linux"
+  echo "Available courses:"
+  list_course_keys
   exit 1
 fi
 
@@ -19,13 +55,13 @@ COURSE_KEY="$1"
 OS_INPUT="$2"
 
 if [[ "$COURSE_KEY" == "--help" ]]; then
-  echo "📚 Available options:"
-  echo "  --course1     Install Backend Client Extensions course"
-  echo "  --course2     Install Frontend Client Extensions course"
+  echo "📚 Available courses:"
+  list_course_keys
+  echo
   echo "  --help        Show this help message"
   echo
   echo "📦 Example usage:"
-  echo "  bash -c \"\$(curl -fsSL <url>)\" -- --course1 mac"
+  echo "  bash -c \"\$(curl -fsSL <url>)\" -- --pages-navigation mac"
   exit 0
 fi
 
@@ -77,7 +113,8 @@ case "$COURSE_KEY" in
     ;;
   *)
     echo "❌ Invalid course option: $COURSE_KEY"
-    echo "Use: --course1 | --course2"
+    echo "Available courses:"
+    list_course_keys
     exit 1
     ;;
 esac
@@ -163,6 +200,15 @@ install_zulu_jre() {
   export PATH="$JAVA_HOME/bin:$PATH"
   echo "✅ Java installed at $JAVA_HOME"
   "$JAVA_HOME/bin/java" -version
+
+  # Persist JAVA_HOME and PATH update for future sessions
+  for RC in "${HOME}/.bashrc" "${HOME}/.zshrc" "${HOME}/.profile"; do
+    if [[ -f "$RC" ]] && ! grep -qF "JAVA_HOME" "$RC"; then
+      printf '\nexport JAVA_HOME="%s"\nexport PATH="$JAVA_HOME/bin:$PATH"\n' "$JAVA_HOME" >> "$RC"
+      echo "📝 Persisted JAVA_HOME to $RC"
+    fi
+  done
+  echo "ℹ️  Open a new terminal or run 'source ~/.bashrc' (or ~/.zshrc) for the PATH changes to take effect."
 }
 
 use_or_install_java() {
@@ -221,6 +267,54 @@ REPO_TOPDIR="$CLEAN_NAME"
 cd "$REPO_TOPDIR"
 echo "🛠 Setting up course environment..."
 chmod +x ./gradlew || true
-./gradlew initBundle
+# === INIT BUNDLE with retry (up to 3 attempts) ===
+GRADLE_MAX_ATTEMPTS=3
+GRADLE_SUCCESS=false
+GRADLE_TMP=$(mktemp)
+
+for attempt in $(seq 1 $GRADLE_MAX_ATTEMPTS); do
+  set +e
+  ./gradlew initBundle 2>&1 | tee "$GRADLE_TMP"
+  GRADLE_EXIT=${PIPESTATUS[0]}
+  set -e
+
+  if [[ $GRADLE_EXIT -eq 0 ]]; then
+    GRADLE_SUCCESS=true
+    break
+  fi
+
+  if [[ $attempt -lt $GRADLE_MAX_ATTEMPTS ]]; then
+    if grep -qiE "verifyBundle|checksum" "$GRADLE_TMP"; then
+      echo "❌ Bundle download failed (checksum mismatch). This is usually caused by a slow or interrupted connection. Retrying... (attempt $attempt of $GRADLE_MAX_ATTEMPTS)"
+    else
+      echo "❌ Gradle initBundle failed (exit code $GRADLE_EXIT). Retrying... (attempt $attempt of $GRADLE_MAX_ATTEMPTS)"
+    fi
+    echo "🧹 Cleaning partial download artifacts..."
+    rm -rf bundles .gradle
+  fi
+done
+
+rm -f "$GRADLE_TMP"
+
+if [[ "$GRADLE_SUCCESS" != "true" ]]; then
+  echo "❌ Setup failed after $GRADLE_MAX_ATTEMPTS attempts. Please check your internet connection and try running the script again."
+  exit 1
+fi
+
+# Dynamically locate the Tomcat directory inside bundles/
+TOMCAT_DIR=$(find bundles -maxdepth 1 -type d -name 'tomcat-*' | head -n1)
+if [[ -z "$TOMCAT_DIR" ]]; then
+  echo "⚠️  Could not find a Tomcat directory under bundles/. CATALINA_HOME not set."
+else
+  export CATALINA_HOME="$(pwd)/$TOMCAT_DIR"
+  echo "✅ CATALINA_HOME set to $CATALINA_HOME"
+  # Persist for future sessions
+  for RC in "${HOME}/.bashrc" "${HOME}/.zshrc" "${HOME}/.profile"; do
+    if [[ -f "$RC" ]] && ! grep -qF "CATALINA_HOME" "$RC"; then
+      printf '\nexport CATALINA_HOME="%s"\n' "$CATALINA_HOME" >> "$RC"
+      echo "📝 Persisted CATALINA_HOME to $RC"
+    fi
+  done
+fi
 
 echo "✅ Done. Liferay bundle initialized. You may proceed to start your Liferay application now."
