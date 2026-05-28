@@ -1,5 +1,36 @@
 $ErrorActionPreference = "Stop"
 
+# === COURSES (grouped by learning path) ===
+$CoursesContentManager = @(
+    "--publishing-tool-and-content-lifecycle"
+    "--pages-navigation"
+    "--search-engine-optimization"
+    "--content-search"
+    "--personalized-experiences"
+    "--classic-cms"
+    "--content-management-system"
+)
+
+$CoursesSiteBuilding = @(
+    "--building-enterprise-websites"
+)
+
+$CoursesCommerce = @(
+    "--foundations-of-commerce"
+    "--users-and-accounts"
+    "--product-management"
+    "--inventory-management"
+    "--pricing"
+    "--order-management"
+    "--storefronts"
+)
+
+function Get-CourseKeys {
+    Write-Host "  Content Manager: $($script:CoursesContentManager -join ' | ')"
+    Write-Host "  Site Building:   $($script:CoursesSiteBuilding -join ' | ')"
+    Write-Host "  Commerce:        $($script:CoursesCommerce -join ' | ')"
+}
+
 function install-course {
     param(
         [string]$CourseKey
@@ -56,7 +87,9 @@ function install-course {
             $RepoUrl = "https://github.com/liferay/liferay-course-content-management-system/archive/refs/heads/main.zip"
         }
         Default {
-            Write-Host "❌ Invalid or missing argument. Use --course1 or --course2."
+            Write-Host "❌ Invalid or missing course key: $CourseKey"
+            Write-Host "Available courses:"
+            Get-CourseKeys
             return
         }
     }
@@ -245,6 +278,8 @@ if ($MyInvocation.InvocationName -eq '.\content-manager-course-setup.ps1' -or $M
     if ($args.Count -ge 1) {
         install-course $args[0]
     } else {
-        Write-Host "ℹ️ Usage: install-course --course1 | --course2"
+        Write-Host "ℹ️ Usage: .\content-manager-course-setup.ps1 <course-key>"
+        Write-Host "Available courses:"
+        Get-CourseKeys
     }
 }

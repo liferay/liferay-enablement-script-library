@@ -6,12 +6,48 @@ JAVA_REQUIRED_VERSION="21.0.1"
 RUNTIME_DIR="${HOME}/.liferay-course-runtime"
 JAVA_DIR="${RUNTIME_DIR}/zulu-java-21"
 
+# === COURSES (grouped by learning path) ===
+COURSES_CONTENT_MANAGER=(
+  --publishing-tool-and-content-lifecycle
+  --pages-navigation
+  --search-engine-optimization
+  --content-search
+  --personalized-experiences
+  --classic-cms
+  --content-management-system
+)
+
+COURSES_SITE_BUILDING=(
+  --building-enterprise-websites
+)
+
+COURSES_COMMERCE=(
+  --foundations-of-commerce
+  --users-and-accounts
+  --product-management
+  --inventory-management
+  --pricing
+  --order-management
+  --storefronts
+)
+
+list_course_keys() {
+  local joined
+  printf -v joined '%s | ' "${COURSES_CONTENT_MANAGER[@]}"
+  echo "  Content Manager: ${joined% | }"
+  printf -v joined '%s | ' "${COURSES_SITE_BUILDING[@]}"
+  echo "  Site Building:   ${joined% | }"
+  printf -v joined '%s | ' "${COURSES_COMMERCE[@]}"
+  echo "  Commerce:        ${joined% | }"
+}
+
 # === ARGUMENTS ===
 if [[ $# -ne 2 ]]; then
   echo "❌ Wrong usage."
   echo "Usage:"
-  echo "  bash -c \"\$(curl -fsSL <url>)\" -- --course1 mac"
-  echo "  bash -c \"\$(curl -fsSL <url>)\" -- --course2 linux"
+  echo "  bash -c \"\$(curl -fsSL <url>)\" -- <course-key> mac|linux"
+  echo "Available courses:"
+  list_course_keys
   exit 1
 fi
 
@@ -19,13 +55,13 @@ COURSE_KEY="$1"
 OS_INPUT="$2"
 
 if [[ "$COURSE_KEY" == "--help" ]]; then
-  echo "📚 Available options:"
-  echo "  --course1     Install Backend Client Extensions course"
-  echo "  --course2     Install Frontend Client Extensions course"
+  echo "📚 Available courses:"
+  list_course_keys
+  echo
   echo "  --help        Show this help message"
   echo
   echo "📦 Example usage:"
-  echo "  bash -c \"\$(curl -fsSL <url>)\" -- --course1 mac"
+  echo "  bash -c \"\$(curl -fsSL <url>)\" -- --pages-navigation mac"
   exit 0
 fi
 
@@ -77,7 +113,8 @@ case "$COURSE_KEY" in
     ;;
   *)
     echo "❌ Invalid course option: $COURSE_KEY"
-    echo "Use: --course1 | --course2"
+    echo "Available courses:"
+    list_course_keys
     exit 1
     ;;
 esac
