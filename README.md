@@ -8,6 +8,18 @@ This tool:
 * Downloads and configures the course workspace.
 * Initializes the local Liferay DXP bundle.
 
+## Repository Structure
+
+```
+course-launcher/
+├── course-setup.sh          # Linux/Mac launcher
+├── course-setup.ps1         # Windows launcher
+└── courses/
+    ├── commerce.conf
+    ├── content-manager.conf
+    └── site-building.conf
+```
+
 ## Table of Contents
 
 * [Setting Up the Clarity Workspace](#setting-up-the-clarity-workspace)
@@ -24,17 +36,17 @@ Here, you'll execute the course launcher tool to prepare your system and set up 
    **Linux/Unix**:
 
    ```bash
-   /bin/bash -c "$(curl -fsSL https://raw.github.com/liferay/liferay-enablement-script-library/main/content-manager-course-setup.sh)" -- --[COURSE-NAME] linux
+   /bin/bash -c "$(curl -fsSL https://raw.github.com/liferay/liferay-enablement-script-library/main/course-launcher/course-setup.sh)" -- --[COURSE-NAME] linux
    ```
 
    **Mac**:
    ```bash
-   /bin/bash -c "$(curl -fsSL https://raw.github.com/liferay/liferay-enablement-script-library/main/content-manager-course-setup.sh)" -- --[COURSE-NAME] mac
+   /bin/bash -c "$(curl -fsSL https://raw.github.com/liferay/liferay-enablement-script-library/main/course-launcher/course-setup.sh)" -- --[COURSE-NAME] mac
    ```
 
    **Windows**:
    ```bash
-   powershell Set-ExecutionPolicy Bypass -Scope Process -Force; iex "& { $(irm https://raw.githubusercontent.com/liferay/liferay-enablement-script-library/refs/heads/main/content-manager-course-setup.ps1); install-course --[COURSE-NAME] }"
+   powershell Set-ExecutionPolicy Bypass -Scope Process -Force; iex "& { $(irm https://raw.githubusercontent.com/liferay/liferay-enablement-script-library/refs/heads/main/course-launcher/course-setup.ps1); install-course --[COURSE-NAME] }"
    ```
 
    This executes the course launcher tool, which automatically checks for and installs Java JDK 21, downloads the course's files, and prepares the Liferay DXP bundle.

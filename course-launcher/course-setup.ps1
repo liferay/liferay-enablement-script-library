@@ -1,5 +1,81 @@
 $ErrorActionPreference = "Stop"
 
+# === COURSES (loaded dynamically from course-launcher/courses/*.conf) ===
+function Import-CourseConfigs {
+    param([string]$ConfDir)
+    $configs = [System.Collections.Generic.List[PSCustomObject]]::new()
+    foreach ($file in Get-ChildItem -Path $ConfDir -Filter "*.conf" | Sort-Object Name) {
+        $learningPath = $null
+        $courses = [System.Collections.Generic.List[string]]::new()
+        $inCourses = $false
+        foreach ($line in Get-Content $file.FullName) {
+            $trimmed = $line.Trim()
+            if ($trimmed -match '^LEARNING_PATH="(.+)"$') {
+                $learningPath = $Matches[1]
+            } elseif ($trimmed -eq 'COURSES=(') {
+                $inCourses = $true
+            } elseif ($trimmed -eq ')' -and $inCourses) {
+                $inCourses = $false
+            } elseif ($inCourses -and $trimmed -ne '') {
+                $courses.Add($trimmed)
+            }
+        }
+        if ($learningPath -and $courses.Count -gt 0) {
+            $configs.Add([PSCustomObject]@{ LearningPath = $learningPath; Courses = $courses.ToArray() })
+        }
+    }
+    return ,$configs
+}
+
+# Fallback used when .conf files are unreachable (e.g. iex/irm invocation).
+# Keep in sync with course-launcher/courses/*.conf.
+$_LearningPaths = @(
+    [PSCustomObject]@{
+        LearningPath = "Content Manager"
+        Courses = @(
+            "--publishing-tool-and-content-lifecycle"
+            "--pages-navigation"
+            "--search-engine-optimization"
+            "--content-search"
+            "--personalized-experiences"
+            "--classic-cms"
+            "--content-management-system"
+        )
+    }
+    [PSCustomObject]@{
+        LearningPath = "Site Building"
+        Courses = @("--building-enterprise-websites")
+    }
+    [PSCustomObject]@{
+        LearningPath = "Commerce"
+        Courses = @(
+            "--foundations-of-commerce"
+            "--commerce-users-and-accounts"
+            "--commerce-product-management"
+            "--commerce-inventory-management"
+            "--commerce-pricing"
+            "--commerce-order-management"
+            "--commerce-storefronts"
+        )
+    }
+)
+
+# Override fallback with .conf files when running from a local checkout
+$_ScriptPath = $MyInvocation.MyCommand.Path
+if ($_ScriptPath) {
+    $_ConfDir = Join-Path (Split-Path -Parent $_ScriptPath) "courses"
+    if (Test-Path $_ConfDir) {
+        $_loaded = Import-CourseConfigs -ConfDir $_ConfDir
+        if ($_loaded.Count -gt 0) { $_LearningPaths = $_loaded }
+    }
+}
+
+function Get-CourseKeys {
+    foreach ($lp in $script:_LearningPaths) {
+        Write-Host "  $($lp.LearningPath): $($lp.Courses -join ' | ')"
+    }
+}
+
 function install-course {
     param(
         [string]$CourseKey
@@ -34,29 +110,31 @@ function install-course {
         "--foundations-of-commerce" {
             $RepoUrl = "https://github.com/liferay/liferay-course-foundations-of-commerce/archive/refs/heads/main.zip"
         }
-        "--users-and-accounts" {
+        "--commerce-users-and-accounts" {
             $RepoUrl = "https://github.com/liferay/liferay-course-commerce-users-and-accounts/archive/refs/heads/main.zip"
         }
-        "--product-management" {
+        "--commerce-product-management" {
             $RepoUrl = "https://github.com/liferay/liferay-course-commerce-product-management/archive/refs/heads/main.zip"
         }
-        "--inventory-management" {
+        "--commerce-inventory-management" {
             $RepoUrl = "https://github.com/liferay/liferay-course-commerce-inventory-management/archive/refs/heads/main.zip"
         }
-        "--pricing" {
+        "--commerce-pricing" {
             $RepoUrl = "https://github.com/liferay/liferay-course-commerce-pricing/archive/refs/heads/main.zip"
         }
-        "--order-management" {
+        "--commerce-order-management" {
             $RepoUrl = "https://github.com/liferay/liferay-course-commerce-order-management/archive/refs/heads/main.zip"
         }
-        "--storefronts" {
+        "--commerce-storefronts" {
             $RepoUrl = "https://github.com/liferay/liferay-course-commerce-storefronts/archive/refs/heads/main.zip"
         }
         "--content-management-system" {
             $RepoUrl = "https://github.com/liferay/liferay-course-content-management-system/archive/refs/heads/main.zip"
         }
         Default {
-            Write-Host "❌ Invalid or missing argument. Use --course1 or --course2."
+            Write-Host "❌ Invalid or missing course key: $CourseKey"
+            Write-Host "Available courses:"
+            Get-CourseKeys
             return
         }
     }
@@ -150,6 +228,25 @@ function Get-JavaMajorVersion {
         New-Item $JavaMarkerFile -ItemType File | Out-Null
         Write-Host "✅ Java installed at $ZuluPath"
         java -version
+
+        # Persist JAVA_HOME for future sessions (idempotent)
+        $existingJavaHome = [System.Environment]::GetEnvironmentVariable("JAVA_HOME", [System.EnvironmentVariableTarget]::User)
+        if (-not $existingJavaHome) {
+            [System.Environment]::SetEnvironmentVariable("JAVA_HOME", $ZuluPath, [System.EnvironmentVariableTarget]::User)
+            Write-Host "📝 JAVA_HOME persisted to user environment."
+        } else {
+            Write-Host "ℹ️  JAVA_HOME already set in user environment ($existingJavaHome), skipping persistence."
+        }
+        # Persist PATH update for future sessions (idempotent)
+        $userPath = [System.Environment]::GetEnvironmentVariable("PATH", [System.EnvironmentVariableTarget]::User)
+        $zuluBin = "$ZuluPath\bin"
+        if ($userPath -notlike "*$zuluBin*") {
+            [System.Environment]::SetEnvironmentVariable("PATH", "$zuluBin;$userPath", [System.EnvironmentVariableTarget]::User)
+            Write-Host "📝 $zuluBin added to user PATH."
+        } else {
+            Write-Host "ℹ️  $zuluBin already in user PATH, skipping."
+        }
+        Write-Host "ℹ️  Open a new terminal for the JAVA_HOME and PATH changes to take effect."
     }
 
     $javaMajor = Get-JavaMajorVersion
@@ -171,11 +268,52 @@ function Get-JavaMajorVersion {
     Set-Location $ExtractPath
     Write-Host "🛠 Running Gradle init..."
 
-    $p = Start-Process -FilePath ".\gradlew.bat" -ArgumentList "initBundle  --no-daemon --console=plain" -Wait -PassThru -NoNewWindow
-        if ($p.ExitCode -ne 0) {
-            Write-Host "❌ Gradle failed with exit code $($p.ExitCode)"
-            exit $p.ExitCode
+    $gradleMaxAttempts = 3
+    $gradleSuccess = $false
+
+    for ($attempt = 1; $attempt -le $gradleMaxAttempts; $attempt++) {
+        $gradleLines = @()
+        & .\gradlew.bat initBundle --no-daemon --console=plain 2>&1 |
+            ForEach-Object { "$_" } |
+            Tee-Object -Variable gradleLines
+        $gradleExit = $LASTEXITCODE
+        $gradleOutput = $gradleLines -join "`n"
+
+        if ($gradleExit -eq 0) {
+            $gradleSuccess = $true
+            break
         }
+
+        if ($attempt -lt $gradleMaxAttempts) {
+            if ($gradleOutput -match "verifyBundle|checksum") {
+                Write-Host "❌ Bundle download failed (checksum mismatch). This is usually caused by a slow or interrupted connection. Retrying... (attempt $attempt of $gradleMaxAttempts)"
+            } else {
+                Write-Host "❌ Gradle initBundle failed (exit code $gradleExit). Retrying... (attempt $attempt of $gradleMaxAttempts)"
+            }
+            Write-Host "🧹 Cleaning partial download artifacts..."
+            Remove-Item -Path (Join-Path $ExtractPath "bundles") -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Item -Path (Join-Path $ExtractPath ".gradle") -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    if (-not $gradleSuccess) {
+        Write-Host "❌ Setup failed after $gradleMaxAttempts attempts. Please check your internet connection and try running the script again."
+        exit 1
+    }
+
+    # Dynamically locate the Tomcat directory inside bundles\
+    $TomcatDir = Get-ChildItem -Path (Join-Path $ExtractPath "bundles") -Directory -Filter "tomcat-*" -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+    if ($null -eq $TomcatDir) {
+        Write-Host "⚠️  Could not find a Tomcat directory under bundles\. CATALINA_HOME not set."
+    } else {
+        $env:CATALINA_HOME = $TomcatDir.FullName
+        Write-Host "✅ CATALINA_HOME set to $($env:CATALINA_HOME)"
+        # Persist for future sessions (user scope, survives reboots)
+        [System.Environment]::SetEnvironmentVariable("CATALINA_HOME", $TomcatDir.FullName, [System.EnvironmentVariableTarget]::User)
+        Write-Host "📝 CATALINA_HOME persisted to user environment."
+    }
+
     Write-Host "✅ Done. Liferay bundle initialized. You may proceed to start your Liferay application now."
 return
 }
@@ -185,6 +323,8 @@ if ($MyInvocation.InvocationName -eq '.\content-manager-course-setup.ps1' -or $M
     if ($args.Count -ge 1) {
         install-course $args[0]
     } else {
-        Write-Host "ℹ️ Usage: install-course --course1 | --course2"
+        Write-Host "ℹ️ Usage: .\content-manager-course-setup.ps1 <course-key>"
+        Write-Host "Available courses:"
+        Get-CourseKeys
     }
 }
