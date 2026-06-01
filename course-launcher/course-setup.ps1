@@ -50,12 +50,12 @@ $_LearningPaths = @(
         LearningPath = "Commerce"
         Courses = @(
             "--foundations-of-commerce"
-            "--users-and-accounts"
-            "--product-management"
-            "--inventory-management"
-            "--pricing"
-            "--order-management"
-            "--storefronts"
+            "--commerce-users-and-accounts"
+            "--commerce-product-management"
+            "--commerce-inventory-management"
+            "--commerce-pricing"
+            "--commerce-order-management"
+            "--commerce-storefronts"
         )
     }
 )
@@ -110,22 +110,22 @@ function install-course {
         "--foundations-of-commerce" {
             $RepoUrl = "https://github.com/liferay/liferay-course-foundations-of-commerce/archive/refs/heads/main.zip"
         }
-        "--users-and-accounts" {
+        "--commerce-users-and-accounts" {
             $RepoUrl = "https://github.com/liferay/liferay-course-commerce-users-and-accounts/archive/refs/heads/main.zip"
         }
-        "--product-management" {
+        "--commerce-product-management" {
             $RepoUrl = "https://github.com/liferay/liferay-course-commerce-product-management/archive/refs/heads/main.zip"
         }
-        "--inventory-management" {
+        "--commerce-inventory-management" {
             $RepoUrl = "https://github.com/liferay/liferay-course-commerce-inventory-management/archive/refs/heads/main.zip"
         }
-        "--pricing" {
+        "--commerce-pricing" {
             $RepoUrl = "https://github.com/liferay/liferay-course-commerce-pricing/archive/refs/heads/main.zip"
         }
-        "--order-management" {
+        "--commerce-order-management" {
             $RepoUrl = "https://github.com/liferay/liferay-course-commerce-order-management/archive/refs/heads/main.zip"
         }
-        "--storefronts" {
+        "--commerce-storefronts" {
             $RepoUrl = "https://github.com/liferay/liferay-course-commerce-storefronts/archive/refs/heads/main.zip"
         }
         "--content-management-system" {

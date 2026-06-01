@@ -13,7 +13,7 @@ declare -a _LP_NAMES=("Content Manager" "Site Building" "Commerce")
 declare -a _LP_COURSES=(
   "--publishing-tool-and-content-lifecycle --pages-navigation --search-engine-optimization --content-search --personalized-experiences --classic-cms --content-management-system"
   "--building-enterprise-websites"
-  "--foundations-of-commerce --users-and-accounts --product-management --inventory-management --pricing --order-management --storefronts"
+  "--foundations-of-commerce --commerce-users-and-accounts --commerce-product-management --commerce-inventory-management --commerce-pricing --commerce-order-management --commerce-storefronts"
 )
 
 _load_course_configs() {
@@ -96,22 +96,22 @@ case "$COURSE_KEY" in
     --foundations-of-commerce)
     REPO_URL="https://github.com/liferay/liferay-course-foundations-of-commerce/archive/refs/heads/main.zip"
     ;;
-    --users-and-accounts)
+    --commerce-users-and-accounts)
     REPO_URL="https://github.com/liferay/liferay-course-commerce-users-and-accounts/archive/refs/heads/main.zip"
     ;;
-    --product-management)
+    --commerce-product-management)
     REPO_URL="https://github.com/liferay/liferay-course-commerce-product-management/archive/refs/heads/main.zip"
     ;;
-    --inventory-management)
+    --commerce-inventory-management)
     REPO_URL="https://github.com/liferay/liferay-course-commerce-inventory-management/archive/refs/heads/main.zip"
     ;;
-    --pricing)
+    --commerce-pricing)
     REPO_URL="https://github.com/liferay/liferay-course-commerce-pricing/archive/refs/heads/main.zip"
     ;;
-    --order-management)
+    --commerce-order-management)
     REPO_URL="https://github.com/liferay/liferay-course-commerce-order-management/archive/refs/heads/main.zip"
     ;;
-    --storefronts)
+    --commerce-storefronts)
     REPO_URL="https://github.com/liferay/liferay-course-commerce-storefronts/archive/refs/heads/main.zip"
     ;;
     --content-management-system)
