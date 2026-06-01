@@ -18,7 +18,7 @@ declare -a _LP_COURSES=(
 
 _load_course_configs() {
   local conf_dir
-  conf_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/course-launcher/courses"
+  conf_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/courses"
   [[ -d "$conf_dir" ]] || return
   local _found=0
   for conf_file in "${conf_dir}"/*.conf; do

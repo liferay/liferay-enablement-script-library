@@ -63,7 +63,7 @@ $_LearningPaths = @(
 # Override fallback with .conf files when running from a local checkout
 $_ScriptPath = $MyInvocation.MyCommand.Path
 if ($_ScriptPath) {
-    $_ConfDir = Join-Path (Split-Path -Parent $_ScriptPath) "course-launcher\courses"
+    $_ConfDir = Join-Path (Split-Path -Parent $_ScriptPath) "courses"
     if (Test-Path $_ConfDir) {
         $_loaded = Import-CourseConfigs -ConfDir $_ConfDir
         if ($_loaded.Count -gt 0) { $_LearningPaths = $_loaded }
