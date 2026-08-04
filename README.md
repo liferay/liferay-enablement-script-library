@@ -8,6 +8,138 @@ This tool:
 * Downloads and configures the course workspace.
 * Initializes the local Liferay DXP bundle.
 
+## Repository Structure
+
+```
+course-launcher/
+├── course-setup.sh          # Linux/Mac launcher
+├── course-setup.ps1         # Windows launcher
+└── courses/
+    ├── commerce.conf
+    ├── content-manager.conf
+    └── site-building.conf
+```
+
+## Course Key Convention
+
+All course keys follow this naming convention:
+
+```
+key = repository name minus the "liferay-course-" prefix
+```
+
+Examples:
+
+| Repository | Key |
+|---|---|
+| `liferay-course-pages-navigation` | `--pages-navigation` |
+| `liferay-course-commerce-pricing` | `--commerce-pricing` |
+| `liferay-course-building-enterprise-websites` | `--building-enterprise-websites` |
+
+This convention applies to all learning paths. When in doubt, check the corresponding GitHub repository name under https://github.com/liferay.
+
+## Adding a New Course
+
+### To an existing learning path
+
+1. Open the corresponding `.conf` file under `course-launcher/courses/`.
+
+   Example: to add a new course to the Content Manager learning path, open `course-launcher/courses/content-manager.conf`:
+
+   ```
+   LEARNING_PATH="Content Manager"
+   COURSES=(
+     --publishing-tool-and-content-lifecycle
+     --pages-navigation
+     --search-engine-optimization
+     --content-search
+     --personalized-experiences
+     --classic-cms
+     --content-management-system
+     --your-new-course-key   ← add the new key here
+   )
+   ```
+
+2. Add the new course key following the naming convention: `key = repository name minus the "liferay-course-" prefix`.
+
+   Example: for a repo named `liferay-course-content-staging`, add:
+
+   ```
+   --content-staging
+   ```
+
+3. Update the one-line fallback entry for that learning path in both `course-launcher/course-setup.sh` and `course-launcher/course-setup.ps1`. Search for the `# Keep in sync` comment to find the right place.
+
+   Example in `course-setup.sh`:
+
+   ```bash
+   # Keep in sync with course-launcher/courses/content-manager.conf
+   "--publishing-tool-and-content-lifecycle --pages-navigation --search-engine-optimization --content-search --personalized-experiences --classic-cms --content-management-system --content-staging"
+   ```
+
+   Example in `course-setup.ps1`:
+
+   ```powershell
+   # Keep in sync with course-launcher/courses/content-manager.conf
+   [PSCustomObject]@{ LearningPath = "Content Manager"; Courses = @("--publishing-tool-and-content-lifecycle", "--pages-navigation", "--search-engine-optimization", "--content-search", "--personalized-experiences", "--classic-cms", "--content-management-system", "--content-staging") }
+   ```
+
+4. No other changes to the main scripts are needed.
+
+### To a new learning path
+
+1. Create a new `.conf` file under `course-launcher/courses/` following the format of the existing files.
+
+   Example: to add a "Developer" learning path, create `course-launcher/courses/developer.conf`:
+
+   ```
+   LEARNING_PATH="Developer"
+   COURSES=(
+     --your-first-course-key
+     --your-second-course-key
+   )
+   ```
+
+2. Add a one-line fallback entry in both scripts. Search for the `# Keep in sync` comment and add a new line following the same pattern as the existing entries.
+
+   Example in `course-setup.sh`:
+
+   ```bash
+   # Keep in sync with course-launcher/courses/developer.conf
+   "--your-first-course-key --your-second-course-key"
+   ```
+
+   Example in `course-setup.ps1`:
+
+   ```powershell
+   # Keep in sync with course-launcher/courses/developer.conf
+   [PSCustomObject]@{ LearningPath = "Developer"; Courses = @("--your-first-course-key", "--your-second-course-key") }
+   ```
+
+3. No other changes to the main scripts are needed.
+
+## Troubleshooting
+
+### JAVA_HOME not found after reopening the terminal
+
+This was a known issue fixed in the 2026 maintenance window. If you installed Java via the course launcher and JAVA_HOME is missing in a new terminal:
+
+- **Linux/Mac**: run `source ~/.bashrc` or `source ~/.zshrc`, then try again.
+- **Windows**: open a new terminal window — the variable was persisted to your user environment and will be available in any new session.
+
+If the issue persists, re-run the setup script — it will detect the existing Java installation and skip the download.
+
+### Server fails to start with "CATALINA_HOME not defined"
+
+This was a known issue fixed in the 2026 maintenance window. Re-run the setup script to set CATALINA_HOME correctly for your session.
+
+### gradle initBundle fails with a checksum error
+
+This is usually caused by a slow or interrupted internet connection. The setup script automatically retries up to 3 times and cleans any partial downloads between attempts. If all 3 attempts fail:
+
+1. Check your internet connection.
+2. Re-run the setup script — it will retry the download from scratch.
+
 ## Table of Contents
 
 * [Setting Up the Clarity Workspace](#setting-up-the-clarity-workspace)
@@ -24,17 +156,17 @@ Here, you'll execute the course launcher tool to prepare your system and set up 
    **Linux/Unix**:
 
    ```bash
-   /bin/bash -c "$(curl -fsSL https://raw.github.com/liferay/liferay-enablement-script-library/main/content-manager-course-setup.sh)" -- --[COURSE-NAME] linux
+   /bin/bash -c "$(curl -fsSL https://raw.github.com/liferay/liferay-enablement-script-library/main/course-launcher/course-setup.sh)" -- --[COURSE-NAME] linux
    ```
 
    **Mac**:
    ```bash
-   /bin/bash -c "$(curl -fsSL https://raw.github.com/liferay/liferay-enablement-script-library/main/content-manager-course-setup.sh)" -- --[COURSE-NAME] mac
+   /bin/bash -c "$(curl -fsSL https://raw.github.com/liferay/liferay-enablement-script-library/main/course-launcher/course-setup.sh)" -- --[COURSE-NAME] mac
    ```
 
    **Windows**:
    ```bash
-   powershell Set-ExecutionPolicy Bypass -Scope Process -Force; iex "& { $(irm https://raw.githubusercontent.com/liferay/liferay-enablement-script-library/refs/heads/main/content-manager-course-setup.ps1); install-course --[COURSE-NAME] }"
+   powershell Set-ExecutionPolicy Bypass -Scope Process -Force; iex "& { $(irm https://raw.githubusercontent.com/liferay/liferay-enablement-script-library/refs/heads/main/course-launcher/course-setup.ps1); install-course --[COURSE-NAME] }"
    ```
 
    This executes the course launcher tool, which automatically checks for and installs Java JDK 21, downloads the course's files, and prepares the Liferay DXP bundle.

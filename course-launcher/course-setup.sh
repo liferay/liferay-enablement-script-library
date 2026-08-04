@@ -6,12 +6,54 @@ JAVA_REQUIRED_VERSION="21.0.1"
 RUNTIME_DIR="${HOME}/.liferay-course-runtime"
 JAVA_DIR="${RUNTIME_DIR}/zulu-java-21"
 
+# === COURSES (loaded dynamically from course-launcher/courses/*.conf) ===
+# Fallback used when .conf files are unreachable (e.g. curl invocation).
+# Keep in sync with course-launcher/courses/*.conf.
+declare -a _LP_NAMES=("Content Manager" "Site Building" "Commerce")
+declare -a _LP_COURSES=(
+  "--publishing-tool-and-content-lifecycle --pages-navigation --search-engine-optimization --content-search --personalized-experiences --classic-cms --content-management-system"
+  "--building-enterprise-websites"
+  "--foundations-of-commerce --commerce-users-and-accounts --commerce-product-management --commerce-inventory-management --commerce-pricing --commerce-order-management --commerce-storefronts"
+)
+
+_load_course_configs() {
+  local conf_dir
+  conf_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/courses"
+  [[ -d "$conf_dir" ]] || return
+  local _found=0
+  for conf_file in "${conf_dir}"/*.conf; do
+    [[ -f "$conf_file" ]] && { _found=1; break; }
+  done
+  [[ $_found -eq 0 ]] && return
+  # Conf files present — replace fallback entirely
+  _LP_NAMES=()
+  _LP_COURSES=()
+  for conf_file in "${conf_dir}"/*.conf; do
+    [[ -f "$conf_file" ]] || continue
+    unset LEARNING_PATH COURSES
+    # shellcheck source=/dev/null
+    source "$conf_file"
+    _LP_NAMES+=("$LEARNING_PATH")
+    _LP_COURSES+=("${COURSES[*]}")
+  done
+}
+
+_load_course_configs
+
+list_course_keys() {
+  for i in "${!_LP_NAMES[@]}"; do
+    local joined="${_LP_COURSES[$i]// / | }"
+    printf "  %s: %s\n" "${_LP_NAMES[$i]}" "$joined"
+  done
+}
+
 # === ARGUMENTS ===
 if [[ $# -ne 2 ]]; then
   echo "❌ Wrong usage."
   echo "Usage:"
-  echo "  bash -c \"\$(curl -fsSL <url>)\" -- --course1 mac"
-  echo "  bash -c \"\$(curl -fsSL <url>)\" -- --course2 linux"
+  echo "  bash -c \"\$(curl -fsSL <url>)\" -- <course-key> mac|linux"
+  echo "Available courses:"
+  list_course_keys
   exit 1
 fi
 
@@ -19,13 +61,13 @@ COURSE_KEY="$1"
 OS_INPUT="$2"
 
 if [[ "$COURSE_KEY" == "--help" ]]; then
-  echo "📚 Available options:"
-  echo "  --course1     Install Backend Client Extensions course"
-  echo "  --course2     Install Frontend Client Extensions course"
+  echo "📚 Available courses:"
+  list_course_keys
+  echo
   echo "  --help        Show this help message"
   echo
   echo "📦 Example usage:"
-  echo "  bash -c \"\$(curl -fsSL <url>)\" -- --course1 mac"
+  echo "  bash -c \"\$(curl -fsSL <url>)\" -- --pages-navigation mac"
   exit 0
 fi
 
@@ -54,22 +96,22 @@ case "$COURSE_KEY" in
     --foundations-of-commerce)
     REPO_URL="https://github.com/liferay/liferay-course-foundations-of-commerce/archive/refs/heads/main.zip"
     ;;
-    --users-and-accounts)
+    --commerce-users-and-accounts)
     REPO_URL="https://github.com/liferay/liferay-course-commerce-users-and-accounts/archive/refs/heads/main.zip"
     ;;
-    --product-management)
+    --commerce-product-management)
     REPO_URL="https://github.com/liferay/liferay-course-commerce-product-management/archive/refs/heads/main.zip"
     ;;
-    --inventory-management)
+    --commerce-inventory-management)
     REPO_URL="https://github.com/liferay/liferay-course-commerce-inventory-management/archive/refs/heads/main.zip"
     ;;
-    --pricing)
+    --commerce-pricing)
     REPO_URL="https://github.com/liferay/liferay-course-commerce-pricing/archive/refs/heads/main.zip"
     ;;
-    --order-management)
+    --commerce-order-management)
     REPO_URL="https://github.com/liferay/liferay-course-commerce-order-management/archive/refs/heads/main.zip"
     ;;
-    --storefronts)
+    --commerce-storefronts)
     REPO_URL="https://github.com/liferay/liferay-course-commerce-storefronts/archive/refs/heads/main.zip"
     ;;
     --content-management-system)
@@ -77,7 +119,8 @@ case "$COURSE_KEY" in
     ;;
   *)
     echo "❌ Invalid course option: $COURSE_KEY"
-    echo "Use: --course1 | --course2"
+    echo "Available courses:"
+    list_course_keys
     exit 1
     ;;
 esac
@@ -147,9 +190,32 @@ install_zulu_jre() {
   [[ "$ARCH" =~ (arm64|aarch64) ]] && ARCH="aarch64"
 
   echo "🌐 Fetching Zulu JRE URL..."
-  local ZULU_URL
-  ZULU_URL=$(fetch_text "https://api.azul.com/zulu/download/community/v1.0/bundles/latest/?java_version=${JAVA_REQUIRED_VERSION}&os=${OS}&arch=${ARCH}&ext=tar.gz&bundle_type=jre&javafx=false&release_status=ga&hw_bitness=64" \
+  local ZULU_API_URL="https://api.azul.com/zulu/download/community/v1.0/bundles/latest/?java_version=${JAVA_REQUIRED_VERSION}&os=${OS}&arch=${ARCH}&ext=tar.gz&bundle_type=jre&javafx=false&release_status=ga&hw_bitness=64"
+  local ZULU_API_RESPONSE ZULU_URL
+
+  set +e
+  ZULU_API_RESPONSE=$(fetch_text "$ZULU_API_URL")
+  local FETCH_EXIT=$?
+  set -e
+
+  if [[ $FETCH_EXIT -ne 0 ]] || [[ -z "$ZULU_API_RESPONSE" ]]; then
+    echo "❌ Could not reach the Azul API to fetch the Zulu JRE download URL."
+    echo "   Endpoint: https://api.azul.com/zulu/download/community/v1.0/bundles/latest/"
+    echo "   Please check your internet connection and try again."
+    echo "   If the problem persists, contact support and share this message."
+    exit 1
+  fi
+
+  ZULU_URL=$(echo "$ZULU_API_RESPONSE" \
     | grep -oE '"url"[ ]*:[ ]*"[^"]+\.tar\.gz"' | head -n 1 | cut -d '"' -f4)
+
+  if [[ -z "$ZULU_URL" ]]; then
+    echo "❌ The Azul API returned an unexpected response — no download URL found."
+    echo "   Endpoint: https://api.azul.com/zulu/download/community/v1.0/bundles/latest/"
+    echo "   The API may be temporarily unavailable or its format may have changed."
+    echo "   Please try again later. If the problem persists, contact support and share this message."
+    exit 1
+  fi
 
   echo "⬇️ Downloading Zulu JRE..."
   mkdir -p "$JAVA_DIR"
@@ -163,6 +229,15 @@ install_zulu_jre() {
   export PATH="$JAVA_HOME/bin:$PATH"
   echo "✅ Java installed at $JAVA_HOME"
   "$JAVA_HOME/bin/java" -version
+
+  # Persist JAVA_HOME and PATH update for future sessions
+  for RC in "${HOME}/.bashrc" "${HOME}/.zshrc" "${HOME}/.profile"; do
+    if [[ -f "$RC" ]] && ! grep -qF "JAVA_HOME" "$RC"; then
+      printf '\nexport JAVA_HOME="%s"\nexport PATH="$JAVA_HOME/bin:$PATH"\n' "$JAVA_HOME" >> "$RC"
+      echo "📝 Persisted JAVA_HOME to $RC"
+    fi
+  done
+  echo "ℹ️  Open a new terminal or run 'source ~/.bashrc' (or ~/.zshrc) for the PATH changes to take effect."
 }
 
 use_or_install_java() {
@@ -221,6 +296,54 @@ REPO_TOPDIR="$CLEAN_NAME"
 cd "$REPO_TOPDIR"
 echo "🛠 Setting up course environment..."
 chmod +x ./gradlew || true
-./gradlew initBundle
+# === INIT BUNDLE with retry (up to 3 attempts) ===
+GRADLE_MAX_ATTEMPTS=3
+GRADLE_SUCCESS=false
+GRADLE_TMP=$(mktemp)
+
+for attempt in $(seq 1 $GRADLE_MAX_ATTEMPTS); do
+  set +e
+  ./gradlew initBundle 2>&1 | tee "$GRADLE_TMP"
+  GRADLE_EXIT=${PIPESTATUS[0]}
+  set -e
+
+  if [[ $GRADLE_EXIT -eq 0 ]]; then
+    GRADLE_SUCCESS=true
+    break
+  fi
+
+  if [[ $attempt -lt $GRADLE_MAX_ATTEMPTS ]]; then
+    if grep -qiE "verifyBundle|checksum" "$GRADLE_TMP"; then
+      echo "❌ Bundle download failed (checksum mismatch). This is usually caused by a slow or interrupted connection. Retrying... (attempt $attempt of $GRADLE_MAX_ATTEMPTS)"
+    else
+      echo "❌ Gradle initBundle failed (exit code $GRADLE_EXIT). Retrying... (attempt $attempt of $GRADLE_MAX_ATTEMPTS)"
+    fi
+    echo "🧹 Cleaning partial download artifacts..."
+    rm -rf bundles .gradle
+  fi
+done
+
+rm -f "$GRADLE_TMP"
+
+if [[ "$GRADLE_SUCCESS" != "true" ]]; then
+  echo "❌ Setup failed after $GRADLE_MAX_ATTEMPTS attempts. Please check your internet connection and try running the script again."
+  exit 1
+fi
+
+# Dynamically locate the Tomcat directory inside bundles/
+TOMCAT_DIR=$(find bundles -maxdepth 1 -type d -name 'tomcat-*' | head -n1)
+if [[ -z "$TOMCAT_DIR" ]]; then
+  echo "⚠️  Could not find a Tomcat directory under bundles/. CATALINA_HOME not set."
+else
+  export CATALINA_HOME="$(pwd)/$TOMCAT_DIR"
+  echo "✅ CATALINA_HOME set to $CATALINA_HOME"
+  # Persist for future sessions
+  for RC in "${HOME}/.bashrc" "${HOME}/.zshrc" "${HOME}/.profile"; do
+    if [[ -f "$RC" ]] && ! grep -qF "CATALINA_HOME" "$RC"; then
+      printf '\nexport CATALINA_HOME="%s"\n' "$CATALINA_HOME" >> "$RC"
+      echo "📝 Persisted CATALINA_HOME to $RC"
+    fi
+  done
+fi
 
 echo "✅ Done. Liferay bundle initialized. You may proceed to start your Liferay application now."
