@@ -207,7 +207,7 @@ install_zulu_jre() {
   fi
 
   ZULU_URL=$(echo "$ZULU_API_RESPONSE" \
-    | grep -oE '"download_url"[ ]*:[ ]*"[^"]+"' | head -n 1 | cut -d '"' -f4)
+    | grep -oE '"url"[ ]*:[ ]*"[^"]+\.tar\.gz"' | head -n 1 | cut -d '"' -f4)
 
   if [[ -z "$ZULU_URL" ]]; then
     echo "❌ The Azul API returned an unexpected response — no download URL found."
