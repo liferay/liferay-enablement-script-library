@@ -238,13 +238,15 @@ function Get-JavaMajorVersion {
         Write-Host "✅ Java installed at $ZuluPath"
         java -version
 
-        # Persist JAVA_HOME for future sessions (idempotent)
+        # Persist JAVA_HOME for future sessions.
+        # We compare against our exact path so that an existing Java 8 entry
+        # is overwritten — not silently skipped.
         $existingJavaHome = [System.Environment]::GetEnvironmentVariable("JAVA_HOME", [System.EnvironmentVariableTarget]::User)
-        if (-not $existingJavaHome) {
+        if ($existingJavaHome -ne $ZuluPath) {
             [System.Environment]::SetEnvironmentVariable("JAVA_HOME", $ZuluPath, [System.EnvironmentVariableTarget]::User)
-            Write-Host "📝 JAVA_HOME persisted to user environment."
+            Write-Host "📝 JAVA_HOME updated to $ZuluPath in user environment."
         } else {
-            Write-Host "ℹ️  JAVA_HOME already set in user environment ($existingJavaHome), skipping persistence."
+            Write-Host "ℹ️  JAVA_HOME already correctly set, skipping."
         }
         # Persist PATH update for future sessions (idempotent)
         $userPath = [System.Environment]::GetEnvironmentVariable("PATH", [System.EnvironmentVariableTarget]::User)
@@ -271,6 +273,29 @@ function Get-JavaMajorVersion {
         }
     } else {
         Write-Host "☕ System Java version $javaMajor is OK."
+    }
+
+    # Verify Java 21 is active before running Gradle.
+    # Prefers JAVA_HOME/bin/java.exe to avoid PATH-cache issues,
+    # giving a clear message instead of the cryptic JVM flag error.
+    $verifyJavaExe = if ($env:JAVA_HOME) { Join-Path $env:JAVA_HOME "bin\java.exe" } else { (Get-Command java -ErrorAction SilentlyContinue)?.Source }
+    if (-not ($verifyJavaExe -and (Test-Path $verifyJavaExe))) {
+        Write-Host "❌ No Java executable found after setup."
+        Write-Host "   Please open a new terminal and re-run the script."
+        exit 1
+    }
+    $verifyOut = & $verifyJavaExe -version 2>&1 | Out-String
+    $verifyMatch = [regex]::Match($verifyOut, 'version\s+"?(?<v>\d+(?:\.\d+)*)')
+    $verifyMajor = if ($verifyMatch.Success) {
+        $p = $verifyMatch.Groups['v'].Value.Split('.')
+        if ($p[0] -eq '1') { [int]$p[1] } else { [int]$p[0] }
+    } else { $null }
+    if ($verifyMajor -ne $JavaRequiredVersion) {
+        Write-Host "❌ Java $JavaRequiredVersion is required, but the active version is $verifyMajor."
+        Write-Host "   JAVA_HOME: $($env:JAVA_HOME)"
+        Write-Host "   Java binary: $verifyJavaExe"
+        Write-Host "   If Java $JavaRequiredVersion was just installed, open a new terminal and re-run the script."
+        exit 1
     }
 
     # === Run Gradle Init ===
