@@ -186,6 +186,18 @@ install_zulu_jre() {
   export PATH="$JAVA_HOME/bin:$PATH"
   echo "✅ Java installed at $JAVA_HOME"
   "$JAVA_HOME/bin/java" -version
+
+  # Persist JAVA_HOME and PATH update for future sessions.
+  # We check for our exact path, not just any JAVA_HOME, so that an existing
+  # Java 8 entry in the file does not prevent writing — our entry appended
+  # last takes precedence on the next shell load.
+  for RC in "${HOME}/.bashrc" "${HOME}/.zshrc" "${HOME}/.profile"; do
+    if [[ -f "$RC" ]] && ! grep -qF "JAVA_HOME=\"$JAVA_HOME\"" "$RC"; then
+      printf '\nexport JAVA_HOME="%s"\nexport PATH="$JAVA_HOME/bin:$PATH"\n' "$JAVA_HOME" >> "$RC"
+      echo "📝 Updated JAVA_HOME in $RC"
+    fi
+  done
+  echo "ℹ️  Open a new terminal or run 'source ~/.bashrc' (or ~/.zshrc) for the PATH changes to take effect."
 }
 
 use_or_install_java() {
@@ -208,6 +220,11 @@ use_or_install_java() {
 
   # Else, install our managed JRE 21
   install_zulu_jre
+  # Defensive re-assertion: install_zulu_jre already exports these, but
+  # repeating here guarantees the caller sees the correct values regardless
+  # of any shell scoping edge case.
+  export JAVA_HOME="$JAVA_DIR"
+  export PATH="$JAVA_HOME/bin:$PATH"
 }
 
 # === TOOLING ===
@@ -217,6 +234,30 @@ done
 
 # === JAVA (idempotent across runs) ===
 use_or_install_java
+
+# Verify that Java 21 is actually active before proceeding.
+# Catches cases where JAVA_HOME was not propagated correctly (e.g. a system
+# Java 8 override) and gives a clear, actionable message instead of the
+# cryptic "--add-opens unrecognized option" error from the JVM.
+_JAVA_BIN=""
+if [[ -n "${JAVA_HOME:-}" ]] && [[ -x "${JAVA_HOME}/bin/java" ]]; then
+  _JAVA_BIN="${JAVA_HOME}/bin/java"
+elif command -v java &>/dev/null; then
+  _JAVA_BIN="$(command -v java)"
+fi
+if [[ -z "$_JAVA_BIN" ]]; then
+  echo "❌ No Java executable found after installation."
+  echo "   Please open a new terminal and re-run the script."
+  exit 1
+fi
+_JAVA_VER=$("$_JAVA_BIN" -version 2>&1 | head -n1 | grep -oE '"[0-9]+' | tr -d '"')
+if [[ "$_JAVA_VER" != "21" ]]; then
+  echo "❌ Java 21 is required, but the active version is ${_JAVA_VER:-unknown}."
+  echo "   JAVA_HOME: ${JAVA_HOME:-not set}"
+  echo "   Java binary: $_JAVA_BIN"
+  echo "   If Java 21 was just installed, open a new terminal and re-run the script."
+  exit 1
+fi
 
 # === DOWNLOAD & EXTRACT REPO (no extra course folder) ===
 echo "📦 Downloading course repository..."
