@@ -136,8 +136,17 @@ function Get-JavaMajorVersion {
         Write-Host "⬇️ Installing Zulu JRE inside: $JavaInstallDir"
         $zipFile = "$env:TEMP\zulu-jre.zip"
 
-        $ProgressPreference = 'SilentlyContinue' 
-        Invoke-WebRequest -Uri $ZuluDownloadUrl -OutFile $zipFile -UseBasicParsing
+        $ProgressPreference = 'SilentlyContinue'
+        try {
+            Invoke-WebRequest -Uri $ZuluDownloadUrl -OutFile $zipFile -UseBasicParsing
+        } catch {
+            Write-Host "❌ Could not download Zulu JRE."
+            Write-Host "   URL: $ZuluDownloadUrl"
+            Write-Host "   Error: $_"
+            Write-Host "   Please check your internet connection and try again."
+            Write-Host "   If the problem persists, contact support and share this message."
+            exit 1
+        }
         Expand-Archive -Path $zipFile -DestinationPath $JavaInstallDir
         Remove-Item $zipFile
 
@@ -150,6 +159,26 @@ function Get-JavaMajorVersion {
         New-Item $JavaMarkerFile -ItemType File | Out-Null
         Write-Host "✅ Java installed at $ZuluPath"
         java -version
+
+        # Persist JAVA_HOME for future sessions.
+        # We compare against our exact path so that an existing Java 8 entry
+        # is overwritten — not silently skipped.
+        $existingJavaHome = [System.Environment]::GetEnvironmentVariable("JAVA_HOME", [System.EnvironmentVariableTarget]::User)
+        if ($existingJavaHome -ne $ZuluPath) {
+            [System.Environment]::SetEnvironmentVariable("JAVA_HOME", $ZuluPath, [System.EnvironmentVariableTarget]::User)
+            Write-Host "📝 JAVA_HOME updated to $ZuluPath in user environment."
+        } else {
+            Write-Host "ℹ️  JAVA_HOME already correctly set, skipping."
+        }
+        $userPath = [System.Environment]::GetEnvironmentVariable("PATH", [System.EnvironmentVariableTarget]::User)
+        $zuluBin = "$ZuluPath\bin"
+        if ($userPath -notlike "*$zuluBin*") {
+            [System.Environment]::SetEnvironmentVariable("PATH", "$zuluBin;$userPath", [System.EnvironmentVariableTarget]::User)
+            Write-Host "📝 $zuluBin added to user PATH."
+        } else {
+            Write-Host "ℹ️  $zuluBin already in user PATH, skipping."
+        }
+        Write-Host "ℹ️  Open a new terminal for the JAVA_HOME and PATH changes to take effect."
     }
 
     $javaMajor = Get-JavaMajorVersion
@@ -165,6 +194,29 @@ function Get-JavaMajorVersion {
         }
     } else {
         Write-Host "☕ System Java version $javaMajor is OK."
+    }
+
+    # Verify Java 21 is active before running Gradle.
+    # Prefers JAVA_HOME/bin/java.exe to avoid PATH-cache issues,
+    # giving a clear message instead of the cryptic JVM flag error.
+    $verifyJavaExe = if ($env:JAVA_HOME) { Join-Path $env:JAVA_HOME "bin\java.exe" } else { (Get-Command java -ErrorAction SilentlyContinue)?.Source }
+    if (-not ($verifyJavaExe -and (Test-Path $verifyJavaExe))) {
+        Write-Host "❌ No Java executable found after setup."
+        Write-Host "   Please open a new terminal and re-run the script."
+        exit 1
+    }
+    $verifyOut = & $verifyJavaExe -version 2>&1 | Out-String
+    $verifyMatch = [regex]::Match($verifyOut, 'version\s+"?(?<v>\d+(?:\.\d+)*)')
+    $verifyMajor = if ($verifyMatch.Success) {
+        $p = $verifyMatch.Groups['v'].Value.Split('.')
+        if ($p[0] -eq '1') { [int]$p[1] } else { [int]$p[0] }
+    } else { $null }
+    if ($verifyMajor -ne $JavaRequiredVersion) {
+        Write-Host "❌ Java $JavaRequiredVersion is required, but the active version is $verifyMajor."
+        Write-Host "   JAVA_HOME: $($env:JAVA_HOME)"
+        Write-Host "   Java binary: $verifyJavaExe"
+        Write-Host "   If Java $JavaRequiredVersion was just installed, open a new terminal and re-run the script."
+        exit 1
     }
 
     # === Run Gradle Init ===

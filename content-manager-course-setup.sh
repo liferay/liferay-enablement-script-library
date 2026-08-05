@@ -147,9 +147,32 @@ install_zulu_jre() {
   [[ "$ARCH" =~ (arm64|aarch64) ]] && ARCH="aarch64"
 
   echo "🌐 Fetching Zulu JRE URL..."
-  local ZULU_URL
-  ZULU_URL=$(fetch_text "https://api.azul.com/zulu/download/community/v1.0/bundles/latest/?java_version=${JAVA_REQUIRED_VERSION}&os=${OS}&arch=${ARCH}&ext=tar.gz&bundle_type=jre&javafx=false&release_status=ga&hw_bitness=64" \
+  local ZULU_API_URL="https://api.azul.com/zulu/download/community/v1.0/bundles/latest/?java_version=${JAVA_REQUIRED_VERSION}&os=${OS}&arch=${ARCH}&ext=tar.gz&bundle_type=jre&javafx=false&release_status=ga&hw_bitness=64"
+  local ZULU_API_RESPONSE ZULU_URL
+
+  set +e
+  ZULU_API_RESPONSE=$(fetch_text "$ZULU_API_URL")
+  local FETCH_EXIT=$?
+  set -e
+
+  if [[ $FETCH_EXIT -ne 0 ]] || [[ -z "$ZULU_API_RESPONSE" ]]; then
+    echo "❌ Could not reach the Azul API to fetch the Zulu JRE download URL."
+    echo "   Endpoint: https://api.azul.com/zulu/download/community/v1.0/bundles/latest/"
+    echo "   Please check your internet connection and try again."
+    echo "   If the problem persists, contact support and share this message."
+    exit 1
+  fi
+
+  ZULU_URL=$(echo "$ZULU_API_RESPONSE" \
     | grep -oE '"url"[ ]*:[ ]*"[^"]+\.tar\.gz"' | head -n 1 | cut -d '"' -f4)
+
+  if [[ -z "$ZULU_URL" ]]; then
+    echo "❌ The Azul API returned an unexpected response — no download URL found."
+    echo "   Endpoint: https://api.azul.com/zulu/download/community/v1.0/bundles/latest/"
+    echo "   The API may be temporarily unavailable or its format may have changed."
+    echo "   Please try again later. If the problem persists, contact support and share this message."
+    exit 1
+  fi
 
   echo "⬇️ Downloading Zulu JRE..."
   mkdir -p "$JAVA_DIR"
@@ -163,6 +186,18 @@ install_zulu_jre() {
   export PATH="$JAVA_HOME/bin:$PATH"
   echo "✅ Java installed at $JAVA_HOME"
   "$JAVA_HOME/bin/java" -version
+
+  # Persist JAVA_HOME and PATH update for future sessions.
+  # We check for our exact path, not just any JAVA_HOME, so that an existing
+  # Java 8 entry in the file does not prevent writing — our entry appended
+  # last takes precedence on the next shell load.
+  for RC in "${HOME}/.bashrc" "${HOME}/.zshrc" "${HOME}/.profile"; do
+    if [[ -f "$RC" ]] && ! grep -qF "JAVA_HOME=\"$JAVA_HOME\"" "$RC"; then
+      printf '\nexport JAVA_HOME="%s"\nexport PATH="$JAVA_HOME/bin:$PATH"\n' "$JAVA_HOME" >> "$RC"
+      echo "📝 Updated JAVA_HOME in $RC"
+    fi
+  done
+  echo "ℹ️  Open a new terminal or run 'source ~/.bashrc' (or ~/.zshrc) for the PATH changes to take effect."
 }
 
 use_or_install_java() {
@@ -185,6 +220,11 @@ use_or_install_java() {
 
   # Else, install our managed JRE 21
   install_zulu_jre
+  # Defensive re-assertion: install_zulu_jre already exports these, but
+  # repeating here guarantees the caller sees the correct values regardless
+  # of any shell scoping edge case.
+  export JAVA_HOME="$JAVA_DIR"
+  export PATH="$JAVA_HOME/bin:$PATH"
 }
 
 # === TOOLING ===
@@ -194,6 +234,30 @@ done
 
 # === JAVA (idempotent across runs) ===
 use_or_install_java
+
+# Verify that Java 21 is actually active before proceeding.
+# Catches cases where JAVA_HOME was not propagated correctly (e.g. a system
+# Java 8 override) and gives a clear, actionable message instead of the
+# cryptic "--add-opens unrecognized option" error from the JVM.
+_JAVA_BIN=""
+if [[ -n "${JAVA_HOME:-}" ]] && [[ -x "${JAVA_HOME}/bin/java" ]]; then
+  _JAVA_BIN="${JAVA_HOME}/bin/java"
+elif command -v java &>/dev/null; then
+  _JAVA_BIN="$(command -v java)"
+fi
+if [[ -z "$_JAVA_BIN" ]]; then
+  echo "❌ No Java executable found after installation."
+  echo "   Please open a new terminal and re-run the script."
+  exit 1
+fi
+_JAVA_VER=$("$_JAVA_BIN" -version 2>&1 | head -n1 | grep -oE '"[0-9]+' | tr -d '"')
+if [[ "$_JAVA_VER" != "21" ]]; then
+  echo "❌ Java 21 is required, but the active version is ${_JAVA_VER:-unknown}."
+  echo "   JAVA_HOME: ${JAVA_HOME:-not set}"
+  echo "   Java binary: $_JAVA_BIN"
+  echo "   If Java 21 was just installed, open a new terminal and re-run the script."
+  exit 1
+fi
 
 # === DOWNLOAD & EXTRACT REPO (no extra course folder) ===
 echo "📦 Downloading course repository..."
