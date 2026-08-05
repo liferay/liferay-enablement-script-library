@@ -136,8 +136,17 @@ function Get-JavaMajorVersion {
         Write-Host "⬇️ Installing Zulu JRE inside: $JavaInstallDir"
         $zipFile = "$env:TEMP\zulu-jre.zip"
 
-        $ProgressPreference = 'SilentlyContinue' 
-        Invoke-WebRequest -Uri $ZuluDownloadUrl -OutFile $zipFile -UseBasicParsing
+        $ProgressPreference = 'SilentlyContinue'
+        try {
+            Invoke-WebRequest -Uri $ZuluDownloadUrl -OutFile $zipFile -UseBasicParsing
+        } catch {
+            Write-Host "❌ Could not download Zulu JRE."
+            Write-Host "   URL: $ZuluDownloadUrl"
+            Write-Host "   Error: $_"
+            Write-Host "   Please check your internet connection and try again."
+            Write-Host "   If the problem persists, contact support and share this message."
+            exit 1
+        }
         Expand-Archive -Path $zipFile -DestinationPath $JavaInstallDir
         Remove-Item $zipFile
 

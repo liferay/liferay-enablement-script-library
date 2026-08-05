@@ -147,9 +147,32 @@ install_zulu_jre() {
   [[ "$ARCH" =~ (arm64|aarch64) ]] && ARCH="aarch64"
 
   echo "🌐 Fetching Zulu JRE URL..."
-  local ZULU_URL
-  ZULU_URL=$(fetch_text "https://api.azul.com/zulu/download/community/v1.0/bundles/latest/?java_version=${JAVA_REQUIRED_VERSION}&os=${OS}&arch=${ARCH}&ext=tar.gz&bundle_type=jre&javafx=false&release_status=ga&hw_bitness=64" \
+  local ZULU_API_URL="https://api.azul.com/zulu/download/community/v1.0/bundles/latest/?java_version=${JAVA_REQUIRED_VERSION}&os=${OS}&arch=${ARCH}&ext=tar.gz&bundle_type=jre&javafx=false&release_status=ga&hw_bitness=64"
+  local ZULU_API_RESPONSE ZULU_URL
+
+  set +e
+  ZULU_API_RESPONSE=$(fetch_text "$ZULU_API_URL")
+  local FETCH_EXIT=$?
+  set -e
+
+  if [[ $FETCH_EXIT -ne 0 ]] || [[ -z "$ZULU_API_RESPONSE" ]]; then
+    echo "❌ Could not reach the Azul API to fetch the Zulu JRE download URL."
+    echo "   Endpoint: https://api.azul.com/zulu/download/community/v1.0/bundles/latest/"
+    echo "   Please check your internet connection and try again."
+    echo "   If the problem persists, contact support and share this message."
+    exit 1
+  fi
+
+  ZULU_URL=$(echo "$ZULU_API_RESPONSE" \
     | grep -oE '"url"[ ]*:[ ]*"[^"]+\.tar\.gz"' | head -n 1 | cut -d '"' -f4)
+
+  if [[ -z "$ZULU_URL" ]]; then
+    echo "❌ The Azul API returned an unexpected response — no download URL found."
+    echo "   Endpoint: https://api.azul.com/zulu/download/community/v1.0/bundles/latest/"
+    echo "   The API may be temporarily unavailable or its format may have changed."
+    echo "   Please try again later. If the problem persists, contact support and share this message."
+    exit 1
+  fi
 
   echo "⬇️ Downloading Zulu JRE..."
   mkdir -p "$JAVA_DIR"
