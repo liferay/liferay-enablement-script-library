@@ -206,7 +206,19 @@ function Get-JavaMajorVersion {
         Write-Host "   Please open a new terminal and re-run the script."
         exit 1
     }
-    $verifyOut = & $verifyJavaExe -version 2>&1 | Out-String
+    # Use Start-Process to capture java -version without triggering
+    # NativeCommandError: java writes version info to stderr, which PowerShell
+    # treats as a terminating error when $ErrorActionPreference = "Stop".
+    $tmpVerErr = [System.IO.Path]::GetTempFileName()
+    $tmpVerOut = [System.IO.Path]::GetTempFileName()
+    try {
+        Start-Process -FilePath $verifyJavaExe -ArgumentList '-version' `
+              -NoNewWindow -Wait `
+              -RedirectStandardError $tmpVerErr -RedirectStandardOutput $tmpVerOut
+        $verifyOut = (Get-Content $tmpVerOut -Raw) + "`n" + (Get-Content $tmpVerErr -Raw)
+    } finally {
+        Remove-Item $tmpVerErr,$tmpVerOut -ErrorAction SilentlyContinue
+    }
     $verifyMatch = [regex]::Match($verifyOut, 'version\s+"?(?<v>\d+(?:\.\d+)*)')
     $verifyMajor = if ($verifyMatch.Success) {
         $p = $verifyMatch.Groups['v'].Value.Split('.')
