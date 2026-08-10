@@ -280,14 +280,24 @@ echo "🛠 Setting up course environment..."
 chmod +x ./gradlew || true
 ./gradlew initBundle
 
-# Write setenv.sh into Tomcat's bin/ so JAVA_HOME is set before the JVM
-# starts, regardless of the user's shell environment or RC file loading.
-# catalina.sh sources this file automatically on every startup/shutdown.
+# Inject JAVA_HOME into Tomcat's setenv.sh so the server always starts with
+# Java 21, regardless of the user's shell environment or RC file loading.
+# catalina.sh sources setenv.sh automatically on every startup/shutdown.
+# If initBundle already created a setenv.sh (Liferay uses it for JVM heap
+# options), we prepend JAVA_HOME instead of overwriting the whole file.
 _TOMCAT_STARTUP=$(find bundles -maxdepth 4 -name "startup.sh" 2>/dev/null | head -n1)
 if [[ -n "$_TOMCAT_STARTUP" ]]; then
   _TOMCAT_BIN=$(dirname "$_TOMCAT_STARTUP")
-  printf 'export JAVA_HOME="%s"\n' "$JAVA_HOME" > "${_TOMCAT_BIN}/setenv.sh"
-  chmod +x "${_TOMCAT_BIN}/setenv.sh"
+  _SETENV="${_TOMCAT_BIN}/setenv.sh"
+  if [[ -f "$_SETENV" ]]; then
+    _TMP=$(mktemp)
+    printf 'export JAVA_HOME="%s"\n' "$JAVA_HOME" > "$_TMP"
+    grep -v '^export JAVA_HOME=' "$_SETENV" >> "$_TMP"
+    mv "$_TMP" "$_SETENV"
+  else
+    printf 'export JAVA_HOME="%s"\n' "$JAVA_HOME" > "$_SETENV"
+    chmod +x "$_SETENV"
+  fi
   echo "🔧 Configured Tomcat to use JAVA_HOME=$JAVA_HOME"
 fi
 

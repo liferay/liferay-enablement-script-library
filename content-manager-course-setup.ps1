@@ -263,16 +263,25 @@ function Get-JavaMajorVersion {
             }
         }
 
-        # Write setenv.bat so Tomcat always starts with the correct Java 21,
-        # regardless of the user's system-level JAVA_HOME.
-        # catalina.bat sources this file automatically on every startup/shutdown.
+        # Inject JAVA_HOME into setenv.bat so Tomcat always starts with the
+        # correct Java 21, regardless of the user's system-level JAVA_HOME.
+        # catalina.bat sources setenv.bat automatically on every startup/shutdown.
+        # If initBundle already created a setenv.bat (Liferay uses it for JVM
+        # heap options), prepend JAVA_HOME instead of overwriting the whole file.
         $tomcatJavaHome = if ($env:JAVA_HOME) {
             $env:JAVA_HOME
         } else {
             Split-Path (Split-Path $verifyJavaExe -Parent) -Parent
         }
+        $javahomeLine = "set `"JAVA_HOME=$tomcatJavaHome`""
         $setenvPath = Join-Path $tomcatBinDir "setenv.bat"
-        Set-Content -Path $setenvPath -Value "set `"JAVA_HOME=$tomcatJavaHome`""
+        if (Test-Path $setenvPath) {
+            $existing = Get-Content $setenvPath -Raw
+            $filtered = ($existing -split "`r?`n" | Where-Object { $_ -notmatch '^set "JAVA_HOME=' }) -join "`r`n"
+            Set-Content -Path $setenvPath -Value "$javahomeLine`r`n$filtered" -NoNewline
+        } else {
+            Set-Content -Path $setenvPath -Value $javahomeLine
+        }
         Write-Host "🔧 Configured Tomcat to use JAVA_HOME=$tomcatJavaHome"
     }
 
