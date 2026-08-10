@@ -65,7 +65,8 @@ Here, you'll execute the course launcher tool to prepare your system and set up 
    **Windows**:
 
    ```bash
-   .\bundles\tomcat\bin\startup.bat
+   cd bundles\tomcat\bin
+   startup.bat
    ```
 
 1. Verify the “Tomcat started“ message displays.
@@ -102,7 +103,8 @@ Here, you'll execute the course launcher tool to prepare your system and set up 
 > **Windows**:
 >
 > ```bash
-> .\bundles\tomcat\bin\shutdown.bat
+> cd bundles\tomcat\bin
+> shutdown.bat
 > ```
 
 Great! With your environment set up, you’re ready to start contributing to Clarity’s applications.
