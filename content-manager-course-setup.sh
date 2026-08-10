@@ -280,10 +280,15 @@ echo "🛠 Setting up course environment..."
 chmod +x ./gradlew || true
 ./gradlew initBundle
 
-echo "✅ Done. Liferay bundle initialized."
-echo ""
-echo "⚠️  IMPORTANT: Before starting Liferay, open a new terminal or run:"
-echo "      source ~/.zshrc    # zsh (default on macOS)"
-echo "      source ~/.bashrc   # bash (default on Linux)"
-echo "   This is required so that JAVA_HOME takes effect in your session."
-echo "   Starting Liferay from this terminal without doing so may cause JVM errors."
+# Write setenv.sh into Tomcat's bin/ so JAVA_HOME is set before the JVM
+# starts, regardless of the user's shell environment or RC file loading.
+# catalina.sh sources this file automatically on every startup/shutdown.
+_TOMCAT_STARTUP=$(find bundles -maxdepth 4 -name "startup.sh" 2>/dev/null | head -n1)
+if [[ -n "$_TOMCAT_STARTUP" ]]; then
+  _TOMCAT_BIN=$(dirname "$_TOMCAT_STARTUP")
+  printf 'export JAVA_HOME="%s"\n' "$JAVA_HOME" > "${_TOMCAT_BIN}/setenv.sh"
+  chmod +x "${_TOMCAT_BIN}/setenv.sh"
+  echo "🔧 Configured Tomcat to use JAVA_HOME=$JAVA_HOME"
+fi
+
+echo "✅ Done. Liferay bundle initialized. You may now start your Liferay application."
