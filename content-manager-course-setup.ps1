@@ -241,6 +241,29 @@ function Get-JavaMajorVersion {
             Write-Host "❌ Gradle failed with exit code $($p.ExitCode)"
             exit $p.ExitCode
         }
+
+    # Patch Tomcat's startup.bat and shutdown.bat to use %~dp0.. (the script's
+    # own directory) instead of %cd% (the caller's working directory) for
+    # CATALINA_HOME detection. Without this, running them via a relative path
+    # (e.g. .\bundles\tomcat\bin\startup.bat from the course root) fails with
+    # "CATALINA_HOME is not defined correctly".
+    $tomcatBinDir = Get-ChildItem -Path (Join-Path $ExtractPath "bundles") -Recurse `
+        -Filter "startup.bat" -ErrorAction SilentlyContinue |
+        Select-Object -First 1 -ExpandProperty DirectoryName
+    if ($tomcatBinDir) {
+        foreach ($bat in @("startup.bat", "shutdown.bat")) {
+            $batPath = Join-Path $tomcatBinDir $bat
+            if (Test-Path $batPath) {
+                $original = Get-Content $batPath -Raw
+                $patched  = $original -replace 'set "CATALINA_HOME=%CURRENT_DIR%"', 'set "CATALINA_HOME=%~dp0.."'
+                if ($original -ne $patched) {
+                    Set-Content -Path $batPath -Value $patched -NoNewline
+                    Write-Host "🔧 Patched $bat for script-relative CATALINA_HOME."
+                }
+            }
+        }
+    }
+
     Write-Host "✅ Done. Liferay bundle initialized. You may proceed to start your Liferay application now."
 return
 }
