@@ -1,6 +1,16 @@
 #!/bin/bash
 set -e
 
+# Guard: if the current directory is no longer accessible (e.g., a previous
+# run renamed or deleted it), bash cannot create subshells and the getcwd
+# error becomes the first line of any pipeline output, breaking version checks.
+# pwd is a shell builtin — it calls getcwd() without spawning a subprocess.
+if ! pwd > /dev/null 2>&1; then
+  echo "❌ Your current directory is no longer accessible."
+  echo "   Please open a new terminal and re-run the command from a valid directory."
+  exit 1
+fi
+
 # === CONSTANTS ===
 JAVA_REQUIRED_VERSION="21.0.1"
 RUNTIME_DIR="${HOME}/.liferay-course-runtime"
@@ -292,7 +302,7 @@ if [[ -n "$_TOMCAT_STARTUP" ]]; then
   if [[ -f "$_SETENV" ]]; then
     _TMP=$(mktemp)
     printf 'export JAVA_HOME="%s"\n' "$JAVA_HOME" > "$_TMP"
-    grep -v '^export JAVA_HOME=' "$_SETENV" >> "$_TMP"
+    grep -v '^export JAVA_HOME=' "$_SETENV" >> "$_TMP" || true
     mv "$_TMP" "$_SETENV"
   else
     printf 'export JAVA_HOME="%s"\n' "$JAVA_HOME" > "$_SETENV"
