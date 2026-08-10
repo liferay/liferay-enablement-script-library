@@ -147,7 +147,10 @@ install_zulu_jre() {
   [[ "$ARCH" =~ (arm64|aarch64) ]] && ARCH="aarch64"
 
   echo "🌐 Fetching Zulu JRE URL..."
-  local ZULU_API_URL="https://api.azul.com/zulu/download/community/v1.0/bundles/latest/?java_version=${JAVA_REQUIRED_VERSION}&os=${OS}&arch=${ARCH}&ext=tar.gz&bundle_type=jre&javafx=false&release_status=ga&hw_bitness=64"
+  # The Azul API expects 'macos', not 'mac'
+  local AZUL_OS="${OS}"
+  [[ "$AZUL_OS" == "mac" ]] && AZUL_OS="macos"
+  local ZULU_API_URL="https://api.azul.com/zulu/download/community/v1.0/bundles/latest/?java_version=${JAVA_REQUIRED_VERSION}&os=${AZUL_OS}&arch=${ARCH}&ext=tar.gz&bundle_type=jre&javafx=false&release_status=ga&hw_bitness=64"
   local ZULU_API_RESPONSE ZULU_URL
 
   set +e
@@ -208,21 +211,11 @@ use_or_install_java() {
     return
   fi
 
-  # Else, check system Java and version
-  if check_command java; then
-    local VER
-    VER=$(java -version 2>&1 | head -n1 | grep -oE '"[0-9]+' | tr -d '"')
-    if [[ "$VER" == "21" ]]; then
-      # Use system Java 21
-      return
-    fi
-  fi
-
-  # Else, install our managed JRE 21
+  # Install managed JRE — ensures JAVA_HOME is always explicitly set and
+  # persisted to RC files regardless of any system Java that may be present.
+  # Relying on an unmanaged system Java risks JAVA_HOME being unset when
+  # Tomcat starts in a new terminal, causing cryptic JVM flag errors.
   install_zulu_jre
-  # Defensive re-assertion: install_zulu_jre already exports these, but
-  # repeating here guarantees the caller sees the correct values regardless
-  # of any shell scoping edge case.
   export JAVA_HOME="$JAVA_DIR"
   export PATH="$JAVA_HOME/bin:$PATH"
 }
@@ -287,4 +280,10 @@ echo "🛠 Setting up course environment..."
 chmod +x ./gradlew || true
 ./gradlew initBundle
 
-echo "✅ Done. Liferay bundle initialized. You may proceed to start your Liferay application now."
+echo "✅ Done. Liferay bundle initialized."
+echo ""
+echo "⚠️  IMPORTANT: Before starting Liferay, open a new terminal or run:"
+echo "      source ~/.zshrc    # zsh (default on macOS)"
+echo "      source ~/.bashrc   # bash (default on Linux)"
+echo "   This is required so that JAVA_HOME takes effect in your session."
+echo "   Starting Liferay from this terminal without doing so may cause JVM errors."

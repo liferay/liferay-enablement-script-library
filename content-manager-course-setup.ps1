@@ -199,7 +199,8 @@ function Get-JavaMajorVersion {
     # Verify Java 21 is active before running Gradle.
     # Prefers JAVA_HOME/bin/java.exe to avoid PATH-cache issues,
     # giving a clear message instead of the cryptic JVM flag error.
-    $verifyJavaExe = if ($env:JAVA_HOME) { Join-Path $env:JAVA_HOME "bin\java.exe" } else { (Get-Command java -ErrorAction SilentlyContinue)?.Source }
+    $javaCmd = Get-Command java -ErrorAction SilentlyContinue
+    $verifyJavaExe = if ($env:JAVA_HOME) { Join-Path $env:JAVA_HOME "bin\java.exe" } elseif ($javaCmd) { $javaCmd.Source } else { $null }
     if (-not ($verifyJavaExe -and (Test-Path $verifyJavaExe))) {
         Write-Host "❌ No Java executable found after setup."
         Write-Host "   Please open a new terminal and re-run the script."
