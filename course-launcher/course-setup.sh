@@ -1,17 +1,69 @@
 #!/bin/bash
 set -e
 
+# Guard: if the current directory is no longer accessible (e.g., a previous
+# run renamed or deleted it), bash cannot create subshells and the getcwd
+# error becomes the first line of any pipeline output, breaking version checks.
+# pwd is a shell builtin — it calls getcwd() without spawning a subprocess.
+if ! pwd > /dev/null 2>&1; then
+  echo "❌ Your current directory is no longer accessible."
+  echo "   Please open a new terminal and re-run the command from a valid directory."
+  exit 1
+fi
+
 # === CONSTANTS ===
 JAVA_REQUIRED_VERSION="21.0.1"
 RUNTIME_DIR="${HOME}/.liferay-course-runtime"
 JAVA_DIR="${RUNTIME_DIR}/zulu-java-21"
 
+# === COURSES (loaded dynamically from course-launcher/courses/*.conf) ===
+# Fallback used when .conf files are unreachable (e.g. curl invocation).
+# Keep in sync with course-launcher/courses/*.conf.
+declare -a _LP_NAMES=("Content Manager" "Site Building" "Commerce")
+declare -a _LP_COURSES=(
+  "--publishing-tool-and-content-lifecycle --pages-navigation --search-engine-optimization --content-search --personalized-experiences --classic-cms --content-management-system"
+  "--building-enterprise-websites"
+  "--foundations-of-commerce --commerce-users-and-accounts --commerce-product-management --commerce-inventory-management --commerce-pricing --commerce-order-management --commerce-storefronts"
+)
+
+_load_course_configs() {
+  local conf_dir
+  conf_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/courses"
+  [[ -d "$conf_dir" ]] || return
+  local _found=0
+  for conf_file in "${conf_dir}"/*.conf; do
+    [[ -f "$conf_file" ]] && { _found=1; break; }
+  done
+  [[ $_found -eq 0 ]] && return
+  # Conf files present — replace fallback entirely
+  _LP_NAMES=()
+  _LP_COURSES=()
+  for conf_file in "${conf_dir}"/*.conf; do
+    [[ -f "$conf_file" ]] || continue
+    unset LEARNING_PATH COURSES
+    # shellcheck source=/dev/null
+    source "$conf_file"
+    _LP_NAMES+=("$LEARNING_PATH")
+    _LP_COURSES+=("${COURSES[*]}")
+  done
+}
+
+_load_course_configs
+
+list_course_keys() {
+  for i in "${!_LP_NAMES[@]}"; do
+    local joined="${_LP_COURSES[$i]// / | }"
+    printf "  %s: %s\n" "${_LP_NAMES[$i]}" "$joined"
+  done
+}
+
 # === ARGUMENTS ===
 if [[ $# -ne 2 ]]; then
   echo "❌ Wrong usage."
   echo "Usage:"
-  echo "  bash -c \"\$(curl -fsSL <url>)\" -- --course1 mac"
-  echo "  bash -c \"\$(curl -fsSL <url>)\" -- --course2 linux"
+  echo "  bash -c \"\$(curl -fsSL <url>)\" -- <course-key> mac|linux"
+  echo "Available courses:"
+  list_course_keys
   exit 1
 fi
 
@@ -19,13 +71,13 @@ COURSE_KEY="$1"
 OS_INPUT="$2"
 
 if [[ "$COURSE_KEY" == "--help" ]]; then
-  echo "📚 Available options:"
-  echo "  --course1     Install Backend Client Extensions course"
-  echo "  --course2     Install Frontend Client Extensions course"
+  echo "📚 Available courses:"
+  list_course_keys
+  echo
   echo "  --help        Show this help message"
   echo
   echo "📦 Example usage:"
-  echo "  bash -c \"\$(curl -fsSL <url>)\" -- --course1 mac"
+  echo "  bash -c \"\$(curl -fsSL <url>)\" -- --pages-navigation mac"
   exit 0
 fi
 
@@ -54,22 +106,22 @@ case "$COURSE_KEY" in
     --foundations-of-commerce)
     REPO_URL="https://github.com/liferay/liferay-course-foundations-of-commerce/archive/refs/heads/main.zip"
     ;;
-    --users-and-accounts)
+    --commerce-users-and-accounts)
     REPO_URL="https://github.com/liferay/liferay-course-commerce-users-and-accounts/archive/refs/heads/main.zip"
     ;;
-    --product-management)
+    --commerce-product-management)
     REPO_URL="https://github.com/liferay/liferay-course-commerce-product-management/archive/refs/heads/main.zip"
     ;;
-    --inventory-management)
+    --commerce-inventory-management)
     REPO_URL="https://github.com/liferay/liferay-course-commerce-inventory-management/archive/refs/heads/main.zip"
     ;;
-    --pricing)
+    --commerce-pricing)
     REPO_URL="https://github.com/liferay/liferay-course-commerce-pricing/archive/refs/heads/main.zip"
     ;;
-    --order-management)
+    --commerce-order-management)
     REPO_URL="https://github.com/liferay/liferay-course-commerce-order-management/archive/refs/heads/main.zip"
     ;;
-    --storefronts)
+    --commerce-storefronts)
     REPO_URL="https://github.com/liferay/liferay-course-commerce-storefronts/archive/refs/heads/main.zip"
     ;;
     --content-management-system)
@@ -77,7 +129,8 @@ case "$COURSE_KEY" in
     ;;
   *)
     echo "❌ Invalid course option: $COURSE_KEY"
-    echo "Use: --course1 | --course2"
+    echo "Available courses:"
+    list_course_keys
     exit 1
     ;;
 esac
@@ -147,7 +200,10 @@ install_zulu_jre() {
   [[ "$ARCH" =~ (arm64|aarch64) ]] && ARCH="aarch64"
 
   echo "🌐 Fetching Zulu JRE URL..."
-  local ZULU_API_URL="https://api.azul.com/zulu/download/community/v1.0/bundles/latest/?java_version=${JAVA_REQUIRED_VERSION}&os=${OS}&arch=${ARCH}&ext=tar.gz&bundle_type=jre&javafx=false&release_status=ga&hw_bitness=64"
+  # The Azul API expects 'macos', not 'mac'
+  local AZUL_OS="${OS}"
+  [[ "$AZUL_OS" == "mac" ]] && AZUL_OS="macos"
+  local ZULU_API_URL="https://api.azul.com/zulu/download/community/v1.0/bundles/latest/?java_version=${JAVA_REQUIRED_VERSION}&os=${AZUL_OS}&arch=${ARCH}&ext=tar.gz&bundle_type=jre&javafx=false&release_status=ga&hw_bitness=64"
   local ZULU_API_RESPONSE ZULU_URL
 
   set +e
@@ -187,17 +243,45 @@ install_zulu_jre() {
   echo "✅ Java installed at $JAVA_HOME"
   "$JAVA_HOME/bin/java" -version
 
-  # Persist JAVA_HOME and PATH update for future sessions.
-  # We check for our exact path, not just any JAVA_HOME, so that an existing
-  # Java 8 entry in the file does not prevent writing — our entry appended
-  # last takes precedence on the next shell load.
-  for RC in "${HOME}/.bashrc" "${HOME}/.zshrc" "${HOME}/.profile"; do
-    if [[ -f "$RC" ]] && ! grep -qF "JAVA_HOME=\"$JAVA_HOME\"" "$RC"; then
-      printf '\nexport JAVA_HOME="%s"\nexport PATH="$JAVA_HOME/bin:$PATH"\n' "$JAVA_HOME" >> "$RC"
-      echo "📝 Updated JAVA_HOME in $RC"
-    fi
-  done
-  echo "ℹ️  Open a new terminal or run 'source ~/.bashrc' (or ~/.zshrc) for the PATH changes to take effect."
+  persist_java_env
+}
+
+# Write JAVA_HOME persistently to the shell RC file so every new terminal
+# session picks up Java 21 automatically — same behaviour as the Windows
+# installer's SetEnvironmentVariable(User) call.
+# Idempotent: removes any previous entry we wrote (detected by our stable
+# marker path) before re-appending, so re-runs never accumulate duplicates.
+persist_java_env() {
+  # Target the canonical RC file for this OS; create it if absent.
+  if [[ "$OS" == "mac" ]]; then
+    local RC="${HOME}/.zshrc"
+  else
+    local RC="${HOME}/.bashrc"
+  fi
+
+  local MARKER=".liferay-course-runtime/zulu-java-21"
+
+  # Remove any line from a previous run that references our managed JRE path.
+  if grep -qF "$MARKER" "$RC" 2>/dev/null; then
+    local _tmp_rc
+    _tmp_rc=$(mktemp)
+    grep -vF "$MARKER" "$RC" > "$_tmp_rc" || true
+    mv "$_tmp_rc" "$RC"
+  fi
+
+  # Append a fresh entry. ${HOME} and $JAVA_HOME are written as literal text
+  # (single-quoted printf) so the RC file is portable for any username — the
+  # shell expands them when it sources the file on each new terminal session.
+  {
+    printf '\n# Added by Liferay Course Launcher\n'
+    printf 'export JAVA_HOME="${HOME}/.liferay-course-runtime/zulu-java-21"\n'
+    printf 'export PATH="$JAVA_HOME/bin:$PATH"\n'
+  } >> "$RC"
+  echo ""
+  echo "📝 JAVA_HOME configured in $RC"
+  echo "   To apply in this terminal, run:"
+  echo "     source $RC"
+  echo "   Or simply open a new terminal — it will already use Java 21."
 }
 
 use_or_install_java() {
@@ -205,24 +289,18 @@ use_or_install_java() {
   if [[ -x "$JAVA_DIR/bin/java" ]]; then
     export JAVA_HOME="$JAVA_DIR"
     export PATH="$JAVA_HOME/bin:$PATH"
+    # Ensure the RC file is up to date even when Java was installed by a
+    # previous run (e.g., the entry may be missing if the first run used an
+    # older script version that only wrote to files that already existed).
+    persist_java_env
     return
   fi
 
-  # Else, check system Java and version
-  if check_command java; then
-    local VER
-    VER=$(java -version 2>&1 | head -n1 | grep -oE '"[0-9]+' | tr -d '"')
-    if [[ "$VER" == "21" ]]; then
-      # Use system Java 21
-      return
-    fi
-  fi
-
-  # Else, install our managed JRE 21
+  # Install managed JRE — ensures JAVA_HOME is always explicitly set and
+  # persisted to RC files regardless of any system Java that may be present.
+  # Relying on an unmanaged system Java risks JAVA_HOME being unset when
+  # Tomcat starts in a new terminal, causing cryptic JVM flag errors.
   install_zulu_jre
-  # Defensive re-assertion: install_zulu_jre already exports these, but
-  # repeating here guarantees the caller sees the correct values regardless
-  # of any shell scoping edge case.
   export JAVA_HOME="$JAVA_DIR"
   export PATH="$JAVA_HOME/bin:$PATH"
 }
@@ -285,6 +363,76 @@ REPO_TOPDIR="$CLEAN_NAME"
 cd "$REPO_TOPDIR"
 echo "🛠 Setting up course environment..."
 chmod +x ./gradlew || true
-./gradlew initBundle
+# === INIT BUNDLE with retry (up to 3 attempts) ===
+GRADLE_MAX_ATTEMPTS=3
+GRADLE_SUCCESS=false
+GRADLE_TMP=$(mktemp)
+
+for attempt in $(seq 1 $GRADLE_MAX_ATTEMPTS); do
+  set +e
+  ./gradlew initBundle 2>&1 | tee "$GRADLE_TMP"
+  GRADLE_EXIT=${PIPESTATUS[0]}
+  set -e
+
+  if [[ $GRADLE_EXIT -eq 0 ]]; then
+    GRADLE_SUCCESS=true
+    break
+  fi
+
+  if [[ $attempt -lt $GRADLE_MAX_ATTEMPTS ]]; then
+    if grep -qiE "verifyBundle|checksum" "$GRADLE_TMP"; then
+      echo "❌ Bundle download failed (checksum mismatch). This is usually caused by a slow or interrupted connection. Retrying... (attempt $attempt of $GRADLE_MAX_ATTEMPTS)"
+    else
+      echo "❌ Gradle initBundle failed (exit code $GRADLE_EXIT). Retrying... (attempt $attempt of $GRADLE_MAX_ATTEMPTS)"
+    fi
+    echo "🧹 Cleaning partial download artifacts..."
+    rm -rf bundles .gradle
+  fi
+done
+
+rm -f "$GRADLE_TMP"
+
+if [[ "$GRADLE_SUCCESS" != "true" ]]; then
+  echo "❌ Setup failed after $GRADLE_MAX_ATTEMPTS attempts. Please check your internet connection and try running the script again."
+  exit 1
+fi
+
+# Dynamically locate the Tomcat directory inside bundles/
+TOMCAT_DIR=$(find bundles -maxdepth 1 -type d -name 'tomcat-*' | head -n1)
+if [[ -z "$TOMCAT_DIR" ]]; then
+  echo "⚠️  Could not find a Tomcat directory under bundles/. CATALINA_HOME not set."
+else
+  export CATALINA_HOME="$(pwd)/$TOMCAT_DIR"
+  echo "✅ CATALINA_HOME set to $CATALINA_HOME"
+  # Persist for future sessions
+  for RC in "${HOME}/.bashrc" "${HOME}/.zshrc" "${HOME}/.profile"; do
+    if [[ -f "$RC" ]] && ! grep -qF "CATALINA_HOME" "$RC"; then
+      printf '\nexport CATALINA_HOME="%s"\n' "$CATALINA_HOME" >> "$RC"
+      echo "📝 Persisted CATALINA_HOME to $RC"
+    fi
+  done
+
+  # Inject JAVA_HOME into Tomcat's setenv.sh so the server always starts with
+  # Java 21, regardless of the user's shell environment or RC file loading.
+  # catalina.sh sources setenv.sh automatically on every startup/shutdown.
+  # If initBundle already created a setenv.sh (Liferay uses it for JVM heap
+  # options), we prepend JAVA_HOME instead of overwriting the whole file.
+  _SETENV="${CATALINA_HOME}/bin/setenv.sh"
+  _TMP=$(mktemp)
+  {
+    cat <<'SETENV_JAVA'
+export JAVA_HOME="${HOME}/.liferay-course-runtime/zulu-java-21"
+export JRE_HOME="${HOME}/.liferay-course-runtime/zulu-java-21"
+SETENV_JAVA
+    if [[ -f "$_SETENV" ]]; then
+      grep -v '^export JAVA_HOME=' "$_SETENV" \
+        | grep -v '^export JRE_HOME=' \
+        || true
+    fi
+  } > "$_TMP"
+  mv "$_TMP" "$_SETENV"
+  chmod +x "$_SETENV"
+  echo "🔧 Configured Tomcat to use Java 21 (\${HOME}/.liferay-course-runtime/zulu-java-21)"
+fi
 
 echo "✅ Done. Liferay bundle initialized. You may proceed to start your Liferay application now."
