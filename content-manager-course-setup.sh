@@ -200,17 +200,42 @@ install_zulu_jre() {
   echo "✅ Java installed at $JAVA_HOME"
   "$JAVA_HOME/bin/java" -version
 
-  # Persist JAVA_HOME and PATH update for future sessions.
-  # We check for our exact path, not just any JAVA_HOME, so that an existing
-  # Java 8 entry in the file does not prevent writing — our entry appended
-  # last takes precedence on the next shell load.
-  for RC in "${HOME}/.bashrc" "${HOME}/.zshrc" "${HOME}/.profile"; do
-    if [[ -f "$RC" ]] && ! grep -qF "JAVA_HOME=\"$JAVA_HOME\"" "$RC"; then
-      printf '\nexport JAVA_HOME="%s"\nexport PATH="$JAVA_HOME/bin:$PATH"\n' "$JAVA_HOME" >> "$RC"
-      echo "📝 Updated JAVA_HOME in $RC"
-    fi
-  done
-  echo "ℹ️  Open a new terminal or run 'source ~/.bashrc' (or ~/.zshrc) for the PATH changes to take effect."
+  persist_java_env
+}
+
+# Write JAVA_HOME persistently to the shell RC file so every new terminal
+# session picks up Java 21 automatically — same behaviour as the Windows
+# installer's SetEnvironmentVariable(User) call.
+# Idempotent: removes any previous entry we wrote (detected by our stable
+# marker path) before re-appending, so re-runs never accumulate duplicates.
+persist_java_env() {
+  # Target the canonical RC file for this OS; create it if absent.
+  if [[ "$OS" == "mac" ]]; then
+    local RC="${HOME}/.zshrc"
+  else
+    local RC="${HOME}/.bashrc"
+  fi
+
+  local MARKER=".liferay-course-runtime/zulu-java-21"
+
+  # Remove any line from a previous run that references our managed JRE path.
+  if grep -qF "$MARKER" "$RC" 2>/dev/null; then
+    local _tmp_rc
+    _tmp_rc=$(mktemp)
+    grep -vF "$MARKER" "$RC" > "$_tmp_rc" || true
+    mv "$_tmp_rc" "$RC"
+  fi
+
+  # Append a fresh entry. ${HOME} and $JAVA_HOME are written as literal text
+  # (single-quoted printf) so the RC file is portable for any username — the
+  # shell expands them when it sources the file on each new terminal session.
+  {
+    printf '\n# Added by Liferay Course Launcher\n'
+    printf 'export JAVA_HOME="${HOME}/.liferay-course-runtime/zulu-java-21"\n'
+    printf 'export PATH="$JAVA_HOME/bin:$PATH"\n'
+  } >> "$RC"
+  echo "📝 JAVA_HOME configured in $RC"
+  echo "ℹ️  Run 'source $RC' or open a new terminal for the changes to take effect."
 }
 
 use_or_install_java() {
@@ -218,6 +243,10 @@ use_or_install_java() {
   if [[ -x "$JAVA_DIR/bin/java" ]]; then
     export JAVA_HOME="$JAVA_DIR"
     export PATH="$JAVA_HOME/bin:$PATH"
+    # Ensure the RC file is up to date even when Java was installed by a
+    # previous run (e.g., the entry may be missing if the first run used an
+    # older script version that only wrote to files that already existed).
+    persist_java_env
     return
   fi
 
