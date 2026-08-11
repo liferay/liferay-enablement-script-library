@@ -84,6 +84,12 @@ function install-course {
     # === CONFIGURATION ===
     $JavaRequiredVersion = 21
     $ZuluDownloadUrl = "https://cdn.azul.com/zulu/bin/zulu21.30.15-ca-jre21.0.1-win_x64.zip"
+    # Managed JRE lives in a stable, user-level directory (mirrors the shell
+    # script's ${HOME}/.liferay-course-runtime/zulu-java-21 path).
+    # A fixed path lets setenv.bat reference %USERPROFILE% instead of an
+    # absolute path that only works for the user who ran the installer.
+    $RuntimeDir    = "$env:USERPROFILE\.liferay-course-runtime"
+    $JavaInstallDir = "$RuntimeDir\zulu-java-21"
 
     switch ($CourseKey) {
         "--publishing-tool-and-content-lifecycle" {
@@ -206,12 +212,11 @@ function Get-JavaMajorVersion {
     return [int]$parts[0]
 }
 
-    # === Java Installation Inside the Extracted Folder ===
-    $JavaInstallDir = Join-Path $ExtractPath "zulu-java"
+    # === Java Installation (user-level, shared across all courses) ===
     $JavaMarkerFile = Join-Path $JavaInstallDir ".installed"
 
     function Install-ZuluJRE {
-        Write-Host "⬇️ Installing Zulu JRE inside: $JavaInstallDir"
+        Write-Host "⬇️ Installing Zulu JRE to: $JavaInstallDir"
         $zipFile = "$env:TEMP\zulu-jre.zip"
 
         $ProgressPreference = 'SilentlyContinue'
@@ -225,32 +230,38 @@ function Get-JavaMajorVersion {
             Write-Host "   If the problem persists, contact support and share this message."
             exit 1
         }
-        Expand-Archive -Path $zipFile -DestinationPath $JavaInstallDir
+
+        # Extract to a temp dir first, then move the versioned subdirectory's
+        # contents into the stable $JavaInstallDir so the path never changes
+        # even if the Zulu version number is updated later.
+        $tmpExtract = Join-Path $env:TEMP "zulu-extract-tmp"
+        if (Test-Path $tmpExtract) { Remove-Item $tmpExtract -Recurse -Force }
+        Expand-Archive -Path $zipFile -DestinationPath $tmpExtract
         Remove-Item $zipFile
+        $unzipped = Get-ChildItem $tmpExtract | Where-Object { $_.PsIsContainer } | Select-Object -First 1
+        New-Item -ItemType Directory -Path $JavaInstallDir -Force | Out-Null
+        Move-Item -Path (Join-Path $unzipped.FullName "*") -Destination $JavaInstallDir -Force
+        Remove-Item $tmpExtract -Recurse -Force
 
-        $unzipped = Get-ChildItem $JavaInstallDir | Where-Object { $_.PsIsContainer } | Select-Object -First 1
-        $ZuluPath = $unzipped.FullName
-
-        $env:JAVA_HOME = $ZuluPath
-        $env:Path = "$ZuluPath\bin;$env:Path"
+        $env:JAVA_HOME = $JavaInstallDir
+        $env:Path = "$JavaInstallDir\bin;$env:Path"
 
         New-Item $JavaMarkerFile -ItemType File | Out-Null
-        Write-Host "✅ Java installed at $ZuluPath"
+        Write-Host "✅ Java installed at $JavaInstallDir"
         java -version
 
         # Persist JAVA_HOME for future sessions.
         # We compare against our exact path so that an existing Java 8 entry
         # is overwritten — not silently skipped.
         $existingJavaHome = [System.Environment]::GetEnvironmentVariable("JAVA_HOME", [System.EnvironmentVariableTarget]::User)
-        if ($existingJavaHome -ne $ZuluPath) {
-            [System.Environment]::SetEnvironmentVariable("JAVA_HOME", $ZuluPath, [System.EnvironmentVariableTarget]::User)
-            Write-Host "📝 JAVA_HOME updated to $ZuluPath in user environment."
+        if ($existingJavaHome -ne $JavaInstallDir) {
+            [System.Environment]::SetEnvironmentVariable("JAVA_HOME", $JavaInstallDir, [System.EnvironmentVariableTarget]::User)
+            Write-Host "📝 JAVA_HOME updated to $JavaInstallDir in user environment."
         } else {
             Write-Host "ℹ️  JAVA_HOME already correctly set, skipping."
         }
-        # Persist PATH update for future sessions (idempotent)
         $userPath = [System.Environment]::GetEnvironmentVariable("PATH", [System.EnvironmentVariableTarget]::User)
-        $zuluBin = "$ZuluPath\bin"
+        $zuluBin = "$JavaInstallDir\bin"
         if ($userPath -notlike "*$zuluBin*") {
             [System.Environment]::SetEnvironmentVariable("PATH", "$zuluBin;$userPath", [System.EnvironmentVariableTarget]::User)
             Write-Host "📝 $zuluBin added to user PATH."
@@ -264,10 +275,9 @@ function Get-JavaMajorVersion {
 
     if ($javaMajor -ne $JavaRequiredVersion) {
         if (Test-Path $JavaMarkerFile) {
-            Write-Host "☕ Using previously installed Java inside $JavaInstallDir"
-            $ZuluPath = (Get-ChildItem $JavaInstallDir | Where-Object { $_.PsIsContainer } | Select-Object -First 1).FullName
-            $env:JAVA_HOME = $ZuluPath
-            $env:Path = "$ZuluPath\bin;$env:Path"
+            Write-Host "☕ Using previously installed Java at $JavaInstallDir"
+            $env:JAVA_HOME = $JavaInstallDir
+            $env:Path = "$JavaInstallDir\bin;$env:Path"
         } else {
             Install-ZuluJRE
         }
@@ -278,13 +288,26 @@ function Get-JavaMajorVersion {
     # Verify Java 21 is active before running Gradle.
     # Prefers JAVA_HOME/bin/java.exe to avoid PATH-cache issues,
     # giving a clear message instead of the cryptic JVM flag error.
-    $verifyJavaExe = if ($env:JAVA_HOME) { Join-Path $env:JAVA_HOME "bin\java.exe" } else { (Get-Command java -ErrorAction SilentlyContinue)?.Source }
+    $javaCmd = Get-Command java -ErrorAction SilentlyContinue
+    $verifyJavaExe = if ($env:JAVA_HOME) { Join-Path $env:JAVA_HOME "bin\java.exe" } elseif ($javaCmd) { $javaCmd.Source } else { $null }
     if (-not ($verifyJavaExe -and (Test-Path $verifyJavaExe))) {
         Write-Host "❌ No Java executable found after setup."
         Write-Host "   Please open a new terminal and re-run the script."
         exit 1
     }
-    $verifyOut = & $verifyJavaExe -version 2>&1 | Out-String
+    # Use Start-Process to capture java -version without triggering
+    # NativeCommandError: java writes version info to stderr, which PowerShell
+    # treats as a terminating error when $ErrorActionPreference = "Stop".
+    $tmpVerErr = [System.IO.Path]::GetTempFileName()
+    $tmpVerOut = [System.IO.Path]::GetTempFileName()
+    try {
+        Start-Process -FilePath $verifyJavaExe -ArgumentList '-version' `
+              -NoNewWindow -Wait `
+              -RedirectStandardError $tmpVerErr -RedirectStandardOutput $tmpVerOut
+        $verifyOut = (Get-Content $tmpVerOut -Raw) + "`n" + (Get-Content $tmpVerErr -Raw)
+    } finally {
+        Remove-Item $tmpVerErr,$tmpVerOut -ErrorAction SilentlyContinue
+    }
     $verifyMatch = [regex]::Match($verifyOut, 'version\s+"?(?<v>\d+(?:\.\d+)*)')
     $verifyMajor = if ($verifyMatch.Success) {
         $p = $verifyMatch.Groups['v'].Value.Split('.')
@@ -346,6 +369,41 @@ function Get-JavaMajorVersion {
         # Persist for future sessions (user scope, survives reboots)
         [System.Environment]::SetEnvironmentVariable("CATALINA_HOME", $TomcatDir.FullName, [System.EnvironmentVariableTarget]::User)
         Write-Host "📝 CATALINA_HOME persisted to user environment."
+
+        $tomcatBinDir = Join-Path $TomcatDir.FullName "bin"
+
+        # Patch startup.bat and shutdown.bat to use %~dp0.. (the script's own
+        # directory) instead of %cd% (the caller's working directory) for
+        # CATALINA_HOME detection. Without this, running them via a relative
+        # path from the course root fails with "CATALINA_HOME is not defined correctly".
+        foreach ($bat in @("startup.bat", "shutdown.bat")) {
+            $batPath = Join-Path $tomcatBinDir $bat
+            if (Test-Path $batPath) {
+                $original = Get-Content $batPath -Raw
+                $patched  = $original -replace 'set "CATALINA_HOME=%CURRENT_DIR%"', 'set "CATALINA_HOME=%~dp0.."'
+                if ($original -ne $patched) {
+                    Set-Content -Path $batPath -Value $patched -NoNewline
+                    Write-Host "🔧 Patched $bat for script-relative CATALINA_HOME."
+                }
+            }
+        }
+
+        # Inject JAVA_HOME into setenv.bat so Tomcat always starts with the
+        # correct Java 21, regardless of the user's system-level JAVA_HOME.
+        # catalina.bat sources setenv.bat automatically on every startup/shutdown.
+        # Use %USERPROFILE% (evaluated at Tomcat start time) instead of an
+        # absolute path so the file works for any user on any machine.
+        # Tomcat checks JRE_HOME first; without it, catalina.bat may resolve
+        # to the system Java instead of our managed JRE 21.
+        $javaHomeLine = 'set "JAVA_HOME=%USERPROFILE%\.liferay-course-runtime\zulu-java-21"'
+        $jreHomeLine  = 'set "JRE_HOME=%USERPROFILE%\.liferay-course-runtime\zulu-java-21"'
+        $setenvPath = Join-Path $tomcatBinDir "setenv.bat"
+        $existing = if (Test-Path $setenvPath) { Get-Content $setenvPath -Raw } else { "" }
+        $filtered = ($existing -split "`r?`n" |
+            Where-Object { $_ -notmatch '^set "JAVA_HOME=' -and $_ -notmatch '^set "JRE_HOME=' }) -join "`r`n"
+        $newContent = "$javaHomeLine`r`n$jreHomeLine`r`n$filtered".TrimEnd()
+        Set-Content -Path $setenvPath -Value $newContent -NoNewline
+        Write-Host "🔧 Configured Tomcat to use Java 21 via %USERPROFILE%\.liferay-course-runtime\zulu-java-21"
     }
 
     Write-Host "✅ Done. Liferay bundle initialized. You may proceed to start your Liferay application now."

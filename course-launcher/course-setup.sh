@@ -1,6 +1,16 @@
 #!/bin/bash
 set -e
 
+# Guard: if the current directory is no longer accessible (e.g., a previous
+# run renamed or deleted it), bash cannot create subshells and the getcwd
+# error becomes the first line of any pipeline output, breaking version checks.
+# pwd is a shell builtin — it calls getcwd() without spawning a subprocess.
+if ! pwd > /dev/null 2>&1; then
+  echo "❌ Your current directory is no longer accessible."
+  echo "   Please open a new terminal and re-run the command from a valid directory."
+  exit 1
+fi
+
 # === CONSTANTS ===
 JAVA_REQUIRED_VERSION="21.0.1"
 RUNTIME_DIR="${HOME}/.liferay-course-runtime"
@@ -190,7 +200,10 @@ install_zulu_jre() {
   [[ "$ARCH" =~ (arm64|aarch64) ]] && ARCH="aarch64"
 
   echo "🌐 Fetching Zulu JRE URL..."
-  local ZULU_API_URL="https://api.azul.com/zulu/download/community/v1.0/bundles/latest/?java_version=${JAVA_REQUIRED_VERSION}&os=${OS}&arch=${ARCH}&ext=tar.gz&bundle_type=jre&javafx=false&release_status=ga&hw_bitness=64"
+  # The Azul API expects 'macos', not 'mac'
+  local AZUL_OS="${OS}"
+  [[ "$AZUL_OS" == "mac" ]] && AZUL_OS="macos"
+  local ZULU_API_URL="https://api.azul.com/zulu/download/community/v1.0/bundles/latest/?java_version=${JAVA_REQUIRED_VERSION}&os=${AZUL_OS}&arch=${ARCH}&ext=tar.gz&bundle_type=jre&javafx=false&release_status=ga&hw_bitness=64"
   local ZULU_API_RESPONSE ZULU_URL
 
   set +e
@@ -230,17 +243,45 @@ install_zulu_jre() {
   echo "✅ Java installed at $JAVA_HOME"
   "$JAVA_HOME/bin/java" -version
 
-  # Persist JAVA_HOME and PATH update for future sessions.
-  # We check for our exact path, not just any JAVA_HOME, so that an existing
-  # Java 8 entry in the file does not prevent writing — our entry appended
-  # last takes precedence on the next shell load.
-  for RC in "${HOME}/.bashrc" "${HOME}/.zshrc" "${HOME}/.profile"; do
-    if [[ -f "$RC" ]] && ! grep -qF "JAVA_HOME=\"$JAVA_HOME\"" "$RC"; then
-      printf '\nexport JAVA_HOME="%s"\nexport PATH="$JAVA_HOME/bin:$PATH"\n' "$JAVA_HOME" >> "$RC"
-      echo "📝 Updated JAVA_HOME in $RC"
-    fi
-  done
-  echo "ℹ️  Open a new terminal or run 'source ~/.bashrc' (or ~/.zshrc) for the PATH changes to take effect."
+  persist_java_env
+}
+
+# Write JAVA_HOME persistently to the shell RC file so every new terminal
+# session picks up Java 21 automatically — same behaviour as the Windows
+# installer's SetEnvironmentVariable(User) call.
+# Idempotent: removes any previous entry we wrote (detected by our stable
+# marker path) before re-appending, so re-runs never accumulate duplicates.
+persist_java_env() {
+  # Target the canonical RC file for this OS; create it if absent.
+  if [[ "$OS" == "mac" ]]; then
+    local RC="${HOME}/.zshrc"
+  else
+    local RC="${HOME}/.bashrc"
+  fi
+
+  local MARKER=".liferay-course-runtime/zulu-java-21"
+
+  # Remove any line from a previous run that references our managed JRE path.
+  if grep -qF "$MARKER" "$RC" 2>/dev/null; then
+    local _tmp_rc
+    _tmp_rc=$(mktemp)
+    grep -vF "$MARKER" "$RC" > "$_tmp_rc" || true
+    mv "$_tmp_rc" "$RC"
+  fi
+
+  # Append a fresh entry. ${HOME} and $JAVA_HOME are written as literal text
+  # (single-quoted printf) so the RC file is portable for any username — the
+  # shell expands them when it sources the file on each new terminal session.
+  {
+    printf '\n# Added by Liferay Course Launcher\n'
+    printf 'export JAVA_HOME="${HOME}/.liferay-course-runtime/zulu-java-21"\n'
+    printf 'export PATH="$JAVA_HOME/bin:$PATH"\n'
+  } >> "$RC"
+  echo ""
+  echo "📝 JAVA_HOME configured in $RC"
+  echo "   To apply in this terminal, run:"
+  echo "     source $RC"
+  echo "   Or simply open a new terminal — it will already use Java 21."
 }
 
 use_or_install_java() {
@@ -248,24 +289,18 @@ use_or_install_java() {
   if [[ -x "$JAVA_DIR/bin/java" ]]; then
     export JAVA_HOME="$JAVA_DIR"
     export PATH="$JAVA_HOME/bin:$PATH"
+    # Ensure the RC file is up to date even when Java was installed by a
+    # previous run (e.g., the entry may be missing if the first run used an
+    # older script version that only wrote to files that already existed).
+    persist_java_env
     return
   fi
 
-  # Else, check system Java and version
-  if check_command java; then
-    local VER
-    VER=$(java -version 2>&1 | head -n1 | grep -oE '"[0-9]+' | tr -d '"')
-    if [[ "$VER" == "21" ]]; then
-      # Use system Java 21
-      return
-    fi
-  fi
-
-  # Else, install our managed JRE 21
+  # Install managed JRE — ensures JAVA_HOME is always explicitly set and
+  # persisted to RC files regardless of any system Java that may be present.
+  # Relying on an unmanaged system Java risks JAVA_HOME being unset when
+  # Tomcat starts in a new terminal, causing cryptic JVM flag errors.
   install_zulu_jre
-  # Defensive re-assertion: install_zulu_jre already exports these, but
-  # repeating here guarantees the caller sees the correct values regardless
-  # of any shell scoping edge case.
   export JAVA_HOME="$JAVA_DIR"
   export PATH="$JAVA_HOME/bin:$PATH"
 }
@@ -376,6 +411,28 @@ else
       echo "📝 Persisted CATALINA_HOME to $RC"
     fi
   done
+
+  # Inject JAVA_HOME into Tomcat's setenv.sh so the server always starts with
+  # Java 21, regardless of the user's shell environment or RC file loading.
+  # catalina.sh sources setenv.sh automatically on every startup/shutdown.
+  # If initBundle already created a setenv.sh (Liferay uses it for JVM heap
+  # options), we prepend JAVA_HOME instead of overwriting the whole file.
+  _SETENV="${CATALINA_HOME}/bin/setenv.sh"
+  _TMP=$(mktemp)
+  {
+    cat <<'SETENV_JAVA'
+export JAVA_HOME="${HOME}/.liferay-course-runtime/zulu-java-21"
+export JRE_HOME="${HOME}/.liferay-course-runtime/zulu-java-21"
+SETENV_JAVA
+    if [[ -f "$_SETENV" ]]; then
+      grep -v '^export JAVA_HOME=' "$_SETENV" \
+        | grep -v '^export JRE_HOME=' \
+        || true
+    fi
+  } > "$_TMP"
+  mv "$_TMP" "$_SETENV"
+  chmod +x "$_SETENV"
+  echo "🔧 Configured Tomcat to use Java 21 (\${HOME}/.liferay-course-runtime/zulu-java-21)"
 fi
 
 echo "✅ Done. Liferay bundle initialized. You may proceed to start your Liferay application now."
