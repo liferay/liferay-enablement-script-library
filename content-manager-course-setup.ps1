@@ -273,16 +273,18 @@ function Get-JavaMajorVersion {
         } else {
             Split-Path (Split-Path $verifyJavaExe -Parent) -Parent
         }
-        $javahomeLine = "set `"JAVA_HOME=$tomcatJavaHome`""
+        # Write absolute paths for both JAVA_HOME and JRE_HOME.
+        # Tomcat checks JRE_HOME first; without it, catalina.bat may resolve
+        # to the system Java instead of our managed JRE 21.
+        $javaHomeLine = "set `"JAVA_HOME=$tomcatJavaHome`""
+        $jreHomeLine  = "set `"JRE_HOME=$tomcatJavaHome`""
         $setenvPath = Join-Path $tomcatBinDir "setenv.bat"
-        if (Test-Path $setenvPath) {
-            $existing = Get-Content $setenvPath -Raw
-            $filtered = ($existing -split "`r?`n" | Where-Object { $_ -notmatch '^set "JAVA_HOME=' }) -join "`r`n"
-            Set-Content -Path $setenvPath -Value "$javahomeLine`r`n$filtered" -NoNewline
-        } else {
-            Set-Content -Path $setenvPath -Value $javahomeLine
-        }
-        Write-Host "🔧 Configured Tomcat to use JAVA_HOME=$tomcatJavaHome"
+        $existing = if (Test-Path $setenvPath) { Get-Content $setenvPath -Raw } else { "" }
+        $filtered = ($existing -split "`r?`n" |
+            Where-Object { $_ -notmatch '^set "JAVA_HOME=' -and $_ -notmatch '^set "JRE_HOME=' }) -join "`r`n"
+        $newContent = "$javaHomeLine`r`n$jreHomeLine`r`n$filtered".TrimEnd()
+        Set-Content -Path $setenvPath -Value $newContent -NoNewline
+        Write-Host "🔧 Configured Tomcat to use Java 21 (JAVA_HOME=$tomcatJavaHome)"
     }
 
     Write-Host "✅ Done. Liferay bundle initialized. You may proceed to start your Liferay application now."

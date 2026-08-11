@@ -299,16 +299,24 @@ _TOMCAT_STARTUP=$(find bundles -maxdepth 4 -name "startup.sh" 2>/dev/null | head
 if [[ -n "$_TOMCAT_STARTUP" ]]; then
   _TOMCAT_BIN=$(dirname "$_TOMCAT_STARTUP")
   _SETENV="${_TOMCAT_BIN}/setenv.sh"
-  if [[ -f "$_SETENV" ]]; then
-    _TMP=$(mktemp)
-    printf 'export JAVA_HOME="%s"\n' "$JAVA_HOME" > "$_TMP"
-    grep -v '^export JAVA_HOME=' "$_SETENV" >> "$_TMP" || true
-    mv "$_TMP" "$_SETENV"
-  else
-    printf 'export JAVA_HOME="%s"\n' "$JAVA_HOME" > "$_SETENV"
-    chmod +x "$_SETENV"
-  fi
-  echo "🔧 Configured Tomcat to use JAVA_HOME=$JAVA_HOME"
+  # Write absolute paths for both JAVA_HOME and JRE_HOME.
+  # Tomcat checks JRE_HOME first; if unset on macOS it falls back to
+  # /usr/libexec/java_home which returns the system Java 8.
+  # Using the literal path (not a shell variable reference) ensures the
+  # value is correct even before the shell environment is fully loaded.
+  _TMP=$(mktemp)
+  {
+    printf 'export JAVA_HOME="%s"\n' "$JAVA_HOME"
+    printf 'export JRE_HOME="%s"\n'  "$JAVA_HOME"
+    if [[ -f "$_SETENV" ]]; then
+      grep -v '^export JAVA_HOME=' "$_SETENV" \
+        | grep -v '^export JRE_HOME=' \
+        || true
+    fi
+  } > "$_TMP"
+  mv "$_TMP" "$_SETENV"
+  chmod +x "$_SETENV"
+  echo "🔧 Configured Tomcat to use Java 21 (JAVA_HOME=$JAVA_HOME)"
 fi
 
 echo "✅ Done. Liferay bundle initialized. You may now start your Liferay application."
