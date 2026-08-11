@@ -299,15 +299,19 @@ _TOMCAT_STARTUP=$(find bundles -maxdepth 4 -name "startup.sh" 2>/dev/null | head
 if [[ -n "$_TOMCAT_STARTUP" ]]; then
   _TOMCAT_BIN=$(dirname "$_TOMCAT_STARTUP")
   _SETENV="${_TOMCAT_BIN}/setenv.sh"
-  # Write absolute paths for both JAVA_HOME and JRE_HOME.
+  # Write ${HOME}-relative paths for both JAVA_HOME and JRE_HOME so that
+  # setenv.sh works for any user, not just the one who ran the installer.
   # Tomcat checks JRE_HOME first; if unset on macOS it falls back to
   # /usr/libexec/java_home which returns the system Java 8.
-  # Using the literal path (not a shell variable reference) ensures the
-  # value is correct even before the shell environment is fully loaded.
+  # The single-quoted heredoc (<<'SETENV_JAVA') prevents ${HOME} from being
+  # expanded now — the literal text is written into setenv.sh and expanded
+  # by the shell when Tomcat sources the file at startup/shutdown.
   _TMP=$(mktemp)
   {
-    printf 'export JAVA_HOME="%s"\n' "$JAVA_HOME"
-    printf 'export JRE_HOME="%s"\n'  "$JAVA_HOME"
+    cat <<'SETENV_JAVA'
+export JAVA_HOME="${HOME}/.liferay-course-runtime/zulu-java-21"
+export JRE_HOME="${HOME}/.liferay-course-runtime/zulu-java-21"
+SETENV_JAVA
     if [[ -f "$_SETENV" ]]; then
       grep -v '^export JAVA_HOME=' "$_SETENV" \
         | grep -v '^export JRE_HOME=' \
