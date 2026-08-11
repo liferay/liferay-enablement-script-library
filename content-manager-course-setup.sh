@@ -234,8 +234,11 @@ persist_java_env() {
     printf 'export JAVA_HOME="${HOME}/.liferay-course-runtime/zulu-java-21"\n'
     printf 'export PATH="$JAVA_HOME/bin:$PATH"\n'
   } >> "$RC"
+  echo ""
   echo "📝 JAVA_HOME configured in $RC"
-  echo "ℹ️  Run 'source $RC' or open a new terminal for the changes to take effect."
+  echo "   To apply in this terminal, run:"
+  echo "     source $RC"
+  echo "   Or simply open a new terminal — it will already use Java 21."
 }
 
 use_or_install_java() {
