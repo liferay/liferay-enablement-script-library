@@ -68,7 +68,7 @@ Here, you'll execute the course launcher tool to prepare your system and set up 
    .\bundles\tomcat\bin\startup.bat
    ```
 
-1. Verify the “Tomcat started“ message displays.
+1. Verify the “Tomcat started” message displays.
 
    This indicates that the server has initiated its startup process in the background.
 
