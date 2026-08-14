@@ -194,17 +194,27 @@ function Get-JavaMajorVersion {
     }
 
     $javaMajor = Get-JavaMajorVersion
+    $usingManagedJRE = $false
 
     if ($javaMajor -ne $JavaRequiredVersion) {
         if (Test-Path $JavaMarkerFile) {
             Write-Host "☕ Using previously installed Java at $JavaInstallDir"
             $env:JAVA_HOME = $JavaInstallDir
             $env:Path = "$JavaInstallDir\bin;$env:Path"
+            $usingManagedJRE = $true
         } else {
             Install-ZuluJRE
+            $usingManagedJRE = $true
         }
     } else {
         Write-Host "☕ System Java version $javaMajor is OK."
+        # Resolve JAVA_HOME from the system java binary so the setenv.bat
+        # injection below can point Tomcat at the real install, not the
+        # managed-JRE path (which doesn't exist when the system Java is used).
+        try {
+            $sysJavaCmd = (Get-Command java -ErrorAction Stop).Source
+            $env:JAVA_HOME = Split-Path (Split-Path $sysJavaCmd -Parent) -Parent
+        } catch { }
     }
 
     # Verify Java 21 is active before running Gradle.
@@ -283,15 +293,27 @@ function Get-JavaMajorVersion {
         # absolute path so the file works for any user on any machine.
         # Tomcat checks JRE_HOME first; without it, catalina.bat may resolve
         # to the system Java instead of our managed JRE 21.
-        $javaHomeLine = 'set "JAVA_HOME=%USERPROFILE%\.liferay-course-runtime\zulu-java-21"'
-        $jreHomeLine  = 'set "JRE_HOME=%USERPROFILE%\.liferay-course-runtime\zulu-java-21"'
+        if ($usingManagedJRE) {
+            # Managed JRE: write %USERPROFILE%-relative paths so setenv.bat
+            # works for any user, not just the one who ran the installer.
+            $javaHomeLine = 'set "JAVA_HOME=%USERPROFILE%\.liferay-course-runtime\zulu-java-21"'
+            $jreHomeLine  = 'set "JRE_HOME=%USERPROFILE%\.liferay-course-runtime\zulu-java-21"'
+            $tomcatJavaNote = "%USERPROFILE%\.liferay-course-runtime\zulu-java-21"
+        } else {
+            # System Java 21 is being used (left in place) — point Tomcat at
+            # its actual resolved path, not the managed-JRE path (which doesn't
+            # exist when the system Java was used instead).
+            $javaHomeLine = "set `"JAVA_HOME=$($env:JAVA_HOME)`""
+            $jreHomeLine  = "set `"JRE_HOME=$($env:JAVA_HOME)`""
+            $tomcatJavaNote = $env:JAVA_HOME
+        }
         $setenvPath = Join-Path $tomcatBinDir "setenv.bat"
         $existing = if (Test-Path $setenvPath) { Get-Content $setenvPath -Raw } else { "" }
         $filtered = ($existing -split "`r?`n" |
             Where-Object { $_ -notmatch '^set "JAVA_HOME=' -and $_ -notmatch '^set "JRE_HOME=' }) -join "`r`n"
         $newContent = "$javaHomeLine`r`n$jreHomeLine`r`n$filtered".TrimEnd()
         Set-Content -Path $setenvPath -Value $newContent -NoNewline
-        Write-Host "🔧 Configured Tomcat to use Java 21 via %USERPROFILE%\.liferay-course-runtime\zulu-java-21"
+        Write-Host "🔧 Configured Tomcat to use Java 21 via $tomcatJavaNote"
     }
 
     Write-Host "✅ Done. Liferay bundle initialized. You may proceed to start your Liferay application now."

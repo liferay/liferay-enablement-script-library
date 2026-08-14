@@ -241,6 +241,50 @@ persist_java_env() {
   echo "   Or simply open a new terminal — it will already use Java 21."
 }
 
+# Returns the major version (e.g. "21") of the given java binary on stdout,
+# or nothing if it can't be determined. Handles both modern version strings
+# ("21.0.11" -> 21) and legacy 1.x strings ("1.8.0_411" -> 8). Mirrors
+# Get-JavaMajorVersion in content-manager-course-setup.ps1, which already
+# gets this right on Windows.
+get_java_major_version() {
+  local java_bin="$1"
+  [[ -x "$java_bin" ]] || return 1
+  local out ver major
+  out=$("$java_bin" -version 2>&1)
+  ver=$(echo "$out" | grep -oE '"[0-9]+(\.[0-9]+)*' | head -n1 | tr -d '"')
+  [[ -z "$ver" ]] && ver=$(echo "$out" | grep -oiE '^\s*openjdk\s+[0-9]+(\.[0-9]+)*' | head -n1 | grep -oE '[0-9]+(\.[0-9]+)*')
+  [[ -z "$ver" ]] && return 1
+  major="${ver%%.*}"
+  if [[ "$major" == "1" ]]; then
+    major=$(echo "$ver" | cut -d. -f2)
+  fi
+  echo "$major"
+}
+
+# Best-effort JAVA_HOME for an already-installed system java binary, so that
+# later steps (e.g. writing Tomcat's setenv.sh) point at the real install
+# instead of guessing. Uses `/usr/libexec/java_home` on mac (the canonical
+# way to resolve a specific version there) and resolves symlinks on Linux
+# (java is commonly a symlink via update-alternatives).
+resolve_system_java_home() {
+  local java_bin="$1"
+  if [[ "$OS" == "mac" ]] && [[ -x /usr/libexec/java_home ]]; then
+    local mac_home
+    mac_home=$(/usr/libexec/java_home -v 21 2>/dev/null)
+    if [[ -n "$mac_home" ]]; then
+      echo "$mac_home"
+      return
+    fi
+  fi
+  local resolved="$java_bin"
+  if check_command readlink; then
+    local link
+    link=$(readlink -f "$java_bin" 2>/dev/null || readlink "$java_bin" 2>/dev/null)
+    [[ -n "$link" ]] && resolved="$link"
+  fi
+  dirname "$(dirname "$resolved")"
+}
+
 use_or_install_java() {
   # Prefer the managed per-user JRE if present (idempotent across runs)
   if [[ -x "$JAVA_DIR/bin/java" ]]; then
@@ -253,10 +297,28 @@ use_or_install_java() {
     return
   fi
 
-  # Install managed JRE — ensures JAVA_HOME is always explicitly set and
-  # persisted to RC files regardless of any system Java that may be present.
-  # Relying on an unmanaged system Java risks JAVA_HOME being unset when
-  # Tomcat starts in a new terminal, causing cryptic JVM flag errors.
+  # If a Java 21 is already on PATH, leave it alone — don't shadow a perfectly
+  # good system Java 21 (any build/minor version) with our own pinned Zulu
+  # download. This mirrors the Windows script's existing behavior, which
+  # already checks the system Java's major version before installing.
+  if check_command java; then
+    local sys_java_bin sys_java_major
+    sys_java_bin="$(command -v java)"
+    sys_java_major="$(get_java_major_version "$sys_java_bin")"
+    if [[ "$sys_java_major" == "21" ]]; then
+      export JAVA_HOME="$(resolve_system_java_home "$sys_java_bin")"
+      echo "☕ System Java 21 detected ($sys_java_bin) — leaving it in place."
+      "$sys_java_bin" -version
+      # Deliberately do NOT call persist_java_env here: the user's shell
+      # already resolves `java` to this install on its own. Writing our own
+      # JAVA_HOME into their RC file would silently override a newer/other
+      # Java 21 build on every future terminal.
+      return
+    fi
+  fi
+
+  # No usable Java 21 found on the system — install our managed JRE and
+  # persist JAVA_HOME so every new terminal picks it up.
   install_zulu_jre
   export JAVA_HOME="$JAVA_DIR"
   export PATH="$JAVA_HOME/bin:$PATH"
@@ -340,10 +402,23 @@ if [[ -n "$_TOMCAT_STARTUP" ]]; then
   # by the shell when Tomcat sources the file at startup/shutdown.
   _TMP=$(mktemp)
   {
-    cat <<'SETENV_JAVA'
+    if [[ "$JAVA_HOME" == "$JAVA_DIR" ]]; then
+      # Managed JRE: write ${HOME}-relative paths so setenv.sh works for any
+      # user, not just the one who ran the installer. The single-quoted
+      # heredoc (<<'SETENV_JAVA') prevents ${HOME} from being expanded now —
+      # the literal text is written into setenv.sh and expanded by the shell
+      # when Tomcat sources the file at startup/shutdown.
+      cat <<'SETENV_JAVA'
 export JAVA_HOME="${HOME}/.liferay-course-runtime/zulu-java-21"
 export JRE_HOME="${HOME}/.liferay-course-runtime/zulu-java-21"
 SETENV_JAVA
+    else
+      # An existing system Java 21 is being used (left in place, per
+      # use_or_install_java) — point Tomcat at its actual resolved path
+      # instead of the managed-JRE path, which doesn't exist in this case.
+      printf 'export JAVA_HOME=%q\n' "$JAVA_HOME"
+      printf 'export JRE_HOME=%q\n' "$JAVA_HOME"
+    fi
     if [[ -f "$_SETENV" ]]; then
       grep -v '^export JAVA_HOME=' "$_SETENV" \
         | grep -v '^export JRE_HOME=' \
