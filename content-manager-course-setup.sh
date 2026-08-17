@@ -12,7 +12,7 @@ if ! pwd > /dev/null 2>&1; then
 fi
 
 # === CONSTANTS ===
-JAVA_REQUIRED_VERSION="21.0.1"
+JAVA_REQUIRED_VERSION="21.0.12"
 RUNTIME_DIR="${HOME}/.liferay-course-runtime"
 JAVA_DIR="${RUNTIME_DIR}/zulu-java-21"
 

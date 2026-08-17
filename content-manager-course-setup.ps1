@@ -7,7 +7,7 @@ function install-course {
 
     # === CONFIGURATION ===
     $JavaRequiredVersion = 21
-    $ZuluDownloadUrl = "https://cdn.azul.com/zulu/bin/zulu21.30.15-ca-jre21.0.1-win_x64.zip"
+    $ZuluDownloadUrl = "https://cdn.azul.com/zulu/bin/zulu21.52.15-ca-jre21.0.12-win_x64.zip"
     # Managed JRE lives in a stable, user-level directory (mirrors the shell
     # script's ${HOME}/.liferay-course-runtime/zulu-java-21 path).
     # A fixed path lets setenv.bat reference %USERPROFILE% instead of an
@@ -68,29 +68,6 @@ function install-course {
     }
 
     $ZipPath = "$env:TEMP\course.zip"
-
-    # === Download ZIP ===
-    Write-Host "📦 Downloading course repository..."
-    $ProgressPreference = 'SilentlyContinue' 
-    Invoke-WebRequest -Uri $RepoUrl -OutFile $ZipPath -UseBasicParsing
-
-    # === Extract ZIP directly here ===
-    Write-Host "📂 Extracting ZIP to current folder..."
-    Expand-Archive -Path $ZipPath -DestinationPath $PWD -Force
-    Remove-Item $ZipPath
-
-    # === Find the extracted folder name ===
-    $ExtractedFolder = Get-ChildItem -Path $PWD | Where-Object {
-        $_.PsIsContainer -and $_.Name -like "liferay-course-*"
-    } | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-
-    if ($null -eq $ExtractedFolder) {
-        Write-Host "❌ Could not find the extracted folder."
-        exit 1
-    }
-
-    $ExtractPath = $ExtractedFolder.FullName
-    Write-Host "📁 Using extracted folder: $ExtractPath"
 
     # === Java Detection ===
 function Get-JavaMajorVersion {
@@ -252,6 +229,29 @@ function Get-JavaMajorVersion {
         Write-Host "   If Java $JavaRequiredVersion was just installed, open a new terminal and re-run the script."
         exit 1
     }
+
+    # === Download ZIP ===
+    Write-Host "📦 Downloading course repository..."
+    $ProgressPreference = 'SilentlyContinue'
+    Invoke-WebRequest -Uri $RepoUrl -OutFile $ZipPath -UseBasicParsing
+
+    # === Extract ZIP directly here ===
+    Write-Host "📂 Extracting ZIP to current folder..."
+    Expand-Archive -Path $ZipPath -DestinationPath $PWD -Force
+    Remove-Item $ZipPath
+
+    # === Find the extracted folder name ===
+    $ExtractedFolder = Get-ChildItem -Path $PWD | Where-Object {
+        $_.PsIsContainer -and $_.Name -like "liferay-course-*"
+    } | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+
+    if ($null -eq $ExtractedFolder) {
+        Write-Host "❌ Could not find the extracted folder."
+        exit 1
+    }
+
+    $ExtractPath = $ExtractedFolder.FullName
+    Write-Host "📁 Using extracted folder: $ExtractPath"
 
     # === Run Gradle Init ===
     Set-Location $ExtractPath
