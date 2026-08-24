@@ -353,29 +353,15 @@ resolve_system_java_home() {
 }
 
 use_or_install_java() {
-  # Prefer the managed per-user JDK if present (idempotent across runs), but
-  # only when it really is a JDK: earlier versions of this script installed a
-  # JRE at the same path, and reusing it would keep search broken forever.
-  if [[ -x "$JAVA_DIR/bin/java" ]]; then
-    if is_full_jdk "$JAVA_DIR/bin/java"; then
-      export JAVA_HOME="$JAVA_DIR"
-      export PATH="$JAVA_HOME/bin:$PATH"
-      # Ensure the RC file is up to date even when Java was installed by a
-      # previous run (e.g., the entry may be missing if the first run used an
-      # older script version that only wrote to files that already existed).
-      persist_java_env
-      return
-    fi
-    echo "♻️  The course Java runtime at $JAVA_DIR is a JRE, which cannot run"
-    echo "   Liferay's search engine. Replacing it with a full JDK..."
-  fi
-
-  # If a Java 21 JDK is already on PATH, leave it alone — don't shadow a
-  # perfectly good system Java 21 (any build/minor version) with our own pinned
-  # Zulu download. This mirrors the Windows script's existing behavior, which
-  # already checks the system Java's major version before installing.
+  # Prefer a Java 21 JDK the user already has. Don't shadow a perfectly good
+  # system install with our own pinned Zulu download, and don't touch their
+  # shell RC file when we don't have to — nothing is installed or persisted on
+  # this path. Checked before the managed runtime so that a developer who keeps
+  # their own JDK is not quietly switched onto ours by an earlier run. Mirrors
+  # content-manager-course-setup.ps1, which already checks the system Java
+  # before its managed runtime.
   if check_command java; then
-    local sys_java_bin sys_java_major
+    local sys_java_bin sys_java_major sys_java_home
     sys_java_bin="$(command -v java)"
     # `|| true` matters under `set -e`: get_java_major_version returns 1 when it
     # cannot parse a version, which is exactly what macOS's /usr/bin/java shim
@@ -383,7 +369,6 @@ use_or_install_java() {
     # this, the script aborts silently on a clean Mac instead of installing Java.
     sys_java_major="$(get_java_major_version "$sys_java_bin" || true)"
     if [[ "$sys_java_major" == "21" ]]; then
-      local sys_java_home
       sys_java_home="$(resolve_system_java_home "$sys_java_bin")"
       # Check the resolved home as well as the binary on PATH: the resolved
       # path is what gets written into Tomcat's setenv.sh, and on macOS
@@ -399,8 +384,25 @@ use_or_install_java() {
         return
       fi
       echo "☕ System Java 21 found ($sys_java_bin), but it is a JRE rather than a JDK."
-      echo "   Liferay's search engine needs a JDK, so the course JDK will be installed."
+      echo "   Liferay's search engine needs a JDK, so the course JDK will be used."
     fi
+  fi
+
+  # Fall back to the managed per-user JDK when a previous run installed one, but
+  # only when it really is a JDK: earlier versions of this script installed a
+  # JRE at the same path, and reusing it would keep search broken forever.
+  if [[ -x "$JAVA_DIR/bin/java" ]]; then
+    if is_full_jdk "$JAVA_DIR/bin/java"; then
+      export JAVA_HOME="$JAVA_DIR"
+      export PATH="$JAVA_HOME/bin:$PATH"
+      # Ensure the RC file is up to date even when Java was installed by a
+      # previous run (e.g., the entry may be missing if the first run used an
+      # older script version that only wrote to files that already existed).
+      persist_java_env
+      return
+    fi
+    echo "♻️  The course Java runtime at $JAVA_DIR is a JRE, which cannot run"
+    echo "   Liferay's search engine. Replacing it with a full JDK..."
   fi
 
   # No usable Java 21 JDK found on the system — install our managed JDK and
