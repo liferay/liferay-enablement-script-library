@@ -7,8 +7,11 @@ function install-course {
 
     # === CONFIGURATION ===
     $JavaRequiredVersion = 21
-    $ZuluDownloadUrl = "https://cdn.azul.com/zulu/bin/zulu21.52.15-ca-jre21.0.12-win_x64.zip"
-    # Managed JRE lives in a stable, user-level directory (mirrors the shell
+    # A JDK, not a JRE: Liferay starts Elasticsearch 8 as a child process for
+    # search, and its entitlement subsystem needs the jdk.attach module that
+    # only a full JDK ships. See Test-FullJdk below.
+    $ZuluDownloadUrl = "https://cdn.azul.com/zulu/bin/zulu21.52.15-ca-jdk21.0.12-win_x64.zip"
+    # Managed JDK lives in a stable, user-level directory (mirrors the shell
     # script's ${HOME}/.liferay-course-runtime/zulu-java-21 path).
     # A fixed path lets setenv.bat reference %USERPROFILE% instead of an
     # absolute path that only works for the user who ran the installer.
@@ -111,18 +114,51 @@ function Get-JavaMajorVersion {
     return [int]$parts[0]
 }
 
+# True when the given java.exe belongs to a full JDK rather than a JRE.
+# Liferay starts Elasticsearch 8 as a child process for search, and its
+# entitlement subsystem requires the jdk.attach module: on a JRE that process
+# dies during JVM boot layer initialization with
+#   FindException: Module jdk.attach not found, required by org.elasticsearch.entitlement
+# leaving the portal running with search permanently broken. Probing for the
+# module itself — rather than for javac.exe — also rejects trimmed or
+# jlink-built runtimes that ship a compiler but omit jdk.attach. Mirrors
+# is_full_jdk in content-manager-course-setup.sh.
+function Test-FullJdk {
+    param([string]$JavaExe)
+
+    if (-not ($JavaExe -and (Test-Path $JavaExe))) { return $false }
+
+    # Start-Process with redirected streams, as elsewhere in this script: java
+    # writes to stderr, which PowerShell turns into a terminating error while
+    # $ErrorActionPreference = "Stop".
+    $tmpOut = [System.IO.Path]::GetTempFileName()
+    $tmpErr = [System.IO.Path]::GetTempFileName()
+    try {
+        Start-Process -FilePath $JavaExe -ArgumentList '--list-modules' `
+              -NoNewWindow -Wait `
+              -RedirectStandardError $tmpErr -RedirectStandardOutput $tmpOut | Out-Null
+        $modules = Get-Content $tmpOut -Raw
+    } catch {
+        return $false
+    } finally {
+        Remove-Item $tmpOut, $tmpErr -ErrorAction SilentlyContinue
+    }
+
+    return ($modules -match '(?m)^jdk\.attach')
+}
+
     # === Java Installation (user-level, shared across all courses) ===
     $JavaMarkerFile = Join-Path $JavaInstallDir ".installed"
 
-    function Install-ZuluJRE {
-        Write-Host "⬇️ Installing Zulu JRE to: $JavaInstallDir"
-        $zipFile = "$env:TEMP\zulu-jre.zip"
+    function Install-ZuluJdk {
+        Write-Host "⬇️ Installing Zulu JDK to: $JavaInstallDir"
+        $zipFile = "$env:TEMP\zulu-jdk.zip"
 
         $ProgressPreference = 'SilentlyContinue'
         try {
             Invoke-WebRequest -Uri $ZuluDownloadUrl -OutFile $zipFile -UseBasicParsing
         } catch {
-            Write-Host "❌ Could not download Zulu JRE."
+            Write-Host "❌ Could not download Zulu JDK."
             Write-Host "   URL: $ZuluDownloadUrl"
             Write-Host "   Error: $_"
             Write-Host "   Please check your internet connection and try again."
@@ -138,14 +174,31 @@ function Get-JavaMajorVersion {
         Expand-Archive -Path $zipFile -DestinationPath $tmpExtract
         Remove-Item $zipFile
         $unzipped = Get-ChildItem $tmpExtract | Where-Object { $_.PsIsContainer } | Select-Object -First 1
+        # Wipe any previous runtime rather than merging into it, so a JRE left
+        # behind by an older version of this script cannot survive as a mix of
+        # old and new files. The directory name is deliberately unchanged, so
+        # the user environment variable and any bundle's setenv.bat keep
+        # pointing at the right place.
+        if (Test-Path $JavaInstallDir) { Remove-Item $JavaInstallDir -Recurse -Force }
         New-Item -ItemType Directory -Path $JavaInstallDir -Force | Out-Null
         Move-Item -Path (Join-Path $unzipped.FullName "*") -Destination $JavaInstallDir -Force
         Remove-Item $tmpExtract -Recurse -Force
 
+        if (-not (Test-FullJdk (Join-Path $JavaInstallDir "bin\java.exe"))) {
+            Write-Host "❌ The Java runtime downloaded from Azul is not a full JDK."
+            Write-Host "   Installed at: $JavaInstallDir"
+            Write-Host "   URL: $ZuluDownloadUrl"
+            Write-Host "   Liferay's search engine cannot start without one."
+            Write-Host "   Please contact support and share this message."
+            exit 1
+        }
+
         $env:JAVA_HOME = $JavaInstallDir
         $env:Path = "$JavaInstallDir\bin;$env:Path"
 
-        New-Item $JavaMarkerFile -ItemType File | Out-Null
+        # -Force so a re-install over a previous (JRE) runtime does not fail on
+        # an already-existing marker file.
+        New-Item $JavaMarkerFile -ItemType File -Force | Out-Null
         Write-Host "✅ Java installed at $JavaInstallDir"
         java -version
 
@@ -171,27 +224,43 @@ function Get-JavaMajorVersion {
     }
 
     $javaMajor = Get-JavaMajorVersion
-    $usingManagedJRE = $false
+    $usingManagedJdk = $false
 
-    if ($javaMajor -ne $JavaRequiredVersion) {
-        if (Test-Path $JavaMarkerFile) {
-            Write-Host "☕ Using previously installed Java at $JavaInstallDir"
-            $env:JAVA_HOME = $JavaInstallDir
-            $env:Path = "$JavaInstallDir\bin;$env:Path"
-            $usingManagedJRE = $true
-        } else {
-            Install-ZuluJRE
-            $usingManagedJRE = $true
-        }
-    } else {
-        Write-Host "☕ System Java version $javaMajor is OK."
-        # Resolve JAVA_HOME from the system java binary so the setenv.bat
-        # injection below can point Tomcat at the real install, not the
-        # managed-JRE path (which doesn't exist when the system Java is used).
+    # A system Java 21 is only good enough if it is a full JDK. Resolve
+    # JAVA_HOME from the system java binary too, so the setenv.bat injection
+    # below can point Tomcat at the real install rather than the managed-JDK
+    # path (which doesn't exist when the system Java is used).
+    $systemJavaHome = $null
+    if ($javaMajor -eq $JavaRequiredVersion) {
         try {
             $sysJavaCmd = (Get-Command java -ErrorAction Stop).Source
-            $env:JAVA_HOME = Split-Path (Split-Path $sysJavaCmd -Parent) -Parent
+            $candidateHome = Split-Path (Split-Path $sysJavaCmd -Parent) -Parent
+            if (Test-FullJdk (Join-Path $candidateHome "bin\java.exe")) {
+                $systemJavaHome = $candidateHome
+            } else {
+                Write-Host "☕ System Java $javaMajor found at $candidateHome, but it is a JRE rather than a JDK."
+                Write-Host "   Liferay's search engine needs a JDK, so the course JDK will be installed."
+            }
         } catch { }
+    }
+
+    if ($systemJavaHome) {
+        Write-Host "☕ System Java $javaMajor JDK is OK."
+        $env:JAVA_HOME = $systemJavaHome
+    } elseif ((Test-Path $JavaMarkerFile) -and (Test-FullJdk (Join-Path $JavaInstallDir "bin\java.exe"))) {
+        Write-Host "☕ Using previously installed Java at $JavaInstallDir"
+        $env:JAVA_HOME = $JavaInstallDir
+        $env:Path = "$JavaInstallDir\bin;$env:Path"
+        $usingManagedJdk = $true
+    } else {
+        # Reached either on a first run, or when a previous run of an older
+        # version of this script left a JRE at $JavaInstallDir.
+        if (Test-Path $JavaMarkerFile) {
+            Write-Host "♻️  The course Java runtime at $JavaInstallDir is a JRE, which cannot run"
+            Write-Host "   Liferay's search engine. Replacing it with a full JDK..."
+        }
+        Install-ZuluJdk
+        $usingManagedJdk = $true
     }
 
     # Verify Java 21 is active before running Gradle.
@@ -227,6 +296,16 @@ function Get-JavaMajorVersion {
         Write-Host "   JAVA_HOME: $($env:JAVA_HOME)"
         Write-Host "   Java binary: $verifyJavaExe"
         Write-Host "   If Java $JavaRequiredVersion was just installed, open a new terminal and re-run the script."
+        exit 1
+    }
+    if (-not (Test-FullJdk $verifyJavaExe)) {
+        Write-Host "❌ Java $JavaRequiredVersion was found, but it is a JRE rather than a full JDK."
+        Write-Host "   JAVA_HOME: $($env:JAVA_HOME)"
+        Write-Host "   Java binary: $verifyJavaExe"
+        Write-Host "   Liferay starts Elasticsearch as a child process for search, and that"
+        Write-Host "   process cannot boot without the jdk.attach module a JDK provides."
+        Write-Host "   Please install a Java $JavaRequiredVersion JDK, or clear JAVA_HOME and re-run this"
+        Write-Host "   script so it can install the course JDK for you."
         exit 1
     }
 
@@ -292,16 +371,16 @@ function Get-JavaMajorVersion {
         # Use %USERPROFILE% (evaluated at Tomcat start time) instead of an
         # absolute path so the file works for any user on any machine.
         # Tomcat checks JRE_HOME first; without it, catalina.bat may resolve
-        # to the system Java instead of our managed JRE 21.
-        if ($usingManagedJRE) {
-            # Managed JRE: write %USERPROFILE%-relative paths so setenv.bat
+        # to the system Java instead of our managed JDK 21.
+        if ($usingManagedJdk) {
+            # Managed JDK: write %USERPROFILE%-relative paths so setenv.bat
             # works for any user, not just the one who ran the installer.
             $javaHomeLine = 'set "JAVA_HOME=%USERPROFILE%\.liferay-course-runtime\zulu-java-21"'
             $jreHomeLine  = 'set "JRE_HOME=%USERPROFILE%\.liferay-course-runtime\zulu-java-21"'
             $tomcatJavaNote = "%USERPROFILE%\.liferay-course-runtime\zulu-java-21"
         } else {
             # System Java 21 is being used (left in place) — point Tomcat at
-            # its actual resolved path, not the managed-JRE path (which doesn't
+            # its actual resolved path, not the managed-JDK path (which doesn't
             # exist when the system Java was used instead).
             $javaHomeLine = "set `"JAVA_HOME=$($env:JAVA_HOME)`""
             $jreHomeLine  = "set `"JRE_HOME=$($env:JAVA_HOME)`""

@@ -150,17 +150,17 @@ fetch_text() {
   fi
 }
 
-install_zulu_jre() {
+install_zulu_jdk() {
   local ARCH
   ARCH=$(uname -m)
   [[ "$ARCH" == "x86_64" ]] && ARCH="x64"
   [[ "$ARCH" =~ (arm64|aarch64) ]] && ARCH="aarch64"
 
-  echo "🌐 Fetching Zulu JRE URL..."
+  echo "🌐 Fetching Zulu JDK URL..."
   # The Azul API expects 'macos', not 'mac'
   local AZUL_OS="${OS}"
   [[ "$AZUL_OS" == "mac" ]] && AZUL_OS="macos"
-  local ZULU_API_URL="https://api.azul.com/zulu/download/community/v1.0/bundles/latest/?java_version=${JAVA_REQUIRED_VERSION}&os=${AZUL_OS}&arch=${ARCH}&ext=tar.gz&bundle_type=jre&javafx=false&release_status=ga&hw_bitness=64"
+  local ZULU_API_URL="https://api.azul.com/zulu/download/community/v1.0/bundles/latest/?java_version=${JAVA_REQUIRED_VERSION}&os=${AZUL_OS}&arch=${ARCH}&ext=tar.gz&bundle_type=jdk&javafx=false&release_status=ga&hw_bitness=64"
   local ZULU_API_RESPONSE ZULU_URL
 
   set +e
@@ -169,7 +169,7 @@ install_zulu_jre() {
   set -e
 
   if [[ $FETCH_EXIT -ne 0 ]] || [[ -z "$ZULU_API_RESPONSE" ]]; then
-    echo "❌ Could not reach the Azul API to fetch the Zulu JRE download URL."
+    echo "❌ Could not reach the Azul API to fetch the Zulu JDK download URL."
     echo "   Endpoint: https://api.azul.com/zulu/download/community/v1.0/bundles/latest/"
     echo "   Please check your internet connection and try again."
     echo "   If the problem persists, contact support and share this message."
@@ -187,13 +187,26 @@ install_zulu_jre() {
     exit 1
   fi
 
-  echo "⬇️ Downloading Zulu JRE..."
+  echo "⬇️ Downloading Zulu JDK..."
+  # Wipe any previous runtime rather than extracting on top of it, so a JRE
+  # left behind by an older version of this script cannot survive as a mix of
+  # old and new files. The directory name is deliberately unchanged, so the
+  # RC-file entry and any bundle's setenv.sh keep pointing at the right place.
+  rm -rf "$JAVA_DIR"
   mkdir -p "$JAVA_DIR"
   local TMP_TAR="${RUNTIME_DIR}/zulu.tar.gz"
   mkdir -p "$RUNTIME_DIR"
   fetch "$ZULU_URL" "$TMP_TAR"
   tar -xzf "$TMP_TAR" -C "$JAVA_DIR" --strip-components=1
   rm -f "$TMP_TAR"
+
+  if ! is_full_jdk "$JAVA_DIR/bin/java"; then
+    echo "❌ The Java runtime downloaded from Azul is not a full JDK."
+    echo "   Installed at: $JAVA_DIR"
+    echo "   Liferay's search engine cannot start without one."
+    echo "   Please contact support and share this message."
+    exit 1
+  fi
 
   export JAVA_HOME="$JAVA_DIR"
   export PATH="$JAVA_HOME/bin:$PATH"
@@ -241,6 +254,21 @@ persist_java_env() {
   echo "   Or simply open a new terminal — it will already use Java 21."
 }
 
+# True when the given java binary belongs to a full JDK rather than a JRE.
+# Liferay starts Elasticsearch 8 as a child process for search, and its
+# entitlement subsystem requires the jdk.attach module: on a JRE that process
+# dies during JVM boot layer initialization with
+#   FindException: Module jdk.attach not found, required by org.elasticsearch.entitlement
+# leaving the portal running with search permanently broken. Probing for the
+# module itself — rather than for `javac` — also rejects trimmed or jlink-built
+# runtimes that ship a compiler but omit jdk.attach. Mirrors Test-FullJdk in
+# content-manager-course-setup.ps1.
+is_full_jdk() {
+  local java_bin="$1"
+  [[ -x "$java_bin" ]] || return 1
+  "$java_bin" --list-modules 2>/dev/null | grep -q '^jdk\.attach'
+}
+
 # Returns the major version (e.g. "21") of the given java binary on stdout,
 # or nothing if it can't be determined. Handles both modern version strings
 # ("21.0.11" -> 21) and legacy 1.x strings ("1.8.0_411" -> 8). Mirrors
@@ -286,40 +314,59 @@ resolve_system_java_home() {
 }
 
 use_or_install_java() {
-  # Prefer the managed per-user JRE if present (idempotent across runs)
+  # Prefer the managed per-user JDK if present (idempotent across runs), but
+  # only when it really is a JDK: earlier versions of this script installed a
+  # JRE at the same path, and reusing it would keep search broken forever.
   if [[ -x "$JAVA_DIR/bin/java" ]]; then
-    export JAVA_HOME="$JAVA_DIR"
-    export PATH="$JAVA_HOME/bin:$PATH"
-    # Ensure the RC file is up to date even when Java was installed by a
-    # previous run (e.g., the entry may be missing if the first run used an
-    # older script version that only wrote to files that already existed).
-    persist_java_env
-    return
+    if is_full_jdk "$JAVA_DIR/bin/java"; then
+      export JAVA_HOME="$JAVA_DIR"
+      export PATH="$JAVA_HOME/bin:$PATH"
+      # Ensure the RC file is up to date even when Java was installed by a
+      # previous run (e.g., the entry may be missing if the first run used an
+      # older script version that only wrote to files that already existed).
+      persist_java_env
+      return
+    fi
+    echo "♻️  The course Java runtime at $JAVA_DIR is a JRE, which cannot run"
+    echo "   Liferay's search engine. Replacing it with a full JDK..."
   fi
 
-  # If a Java 21 is already on PATH, leave it alone — don't shadow a perfectly
-  # good system Java 21 (any build/minor version) with our own pinned Zulu
-  # download. This mirrors the Windows script's existing behavior, which
+  # If a Java 21 JDK is already on PATH, leave it alone — don't shadow a
+  # perfectly good system Java 21 (any build/minor version) with our own pinned
+  # Zulu download. This mirrors the Windows script's existing behavior, which
   # already checks the system Java's major version before installing.
   if check_command java; then
     local sys_java_bin sys_java_major
     sys_java_bin="$(command -v java)"
-    sys_java_major="$(get_java_major_version "$sys_java_bin")"
+    # `|| true` matters under `set -e`: get_java_major_version returns 1 when it
+    # cannot parse a version, which is exactly what macOS's /usr/bin/java shim
+    # prints on a machine with no JDK ("Unable to locate a Java Runtime"). Without
+    # this, the script aborts silently on a clean Mac instead of installing Java.
+    sys_java_major="$(get_java_major_version "$sys_java_bin" || true)"
     if [[ "$sys_java_major" == "21" ]]; then
-      export JAVA_HOME="$(resolve_system_java_home "$sys_java_bin")"
-      echo "☕ System Java 21 detected ($sys_java_bin) — leaving it in place."
-      "$sys_java_bin" -version
-      # Deliberately do NOT call persist_java_env here: the user's shell
-      # already resolves `java` to this install on its own. Writing our own
-      # JAVA_HOME into their RC file would silently override a newer/other
-      # Java 21 build on every future terminal.
-      return
+      local sys_java_home
+      sys_java_home="$(resolve_system_java_home "$sys_java_bin")"
+      # Check the resolved home as well as the binary on PATH: the resolved
+      # path is what gets written into Tomcat's setenv.sh, and on macOS
+      # /usr/libexec/java_home can name a different install than `java` does.
+      if is_full_jdk "$sys_java_bin" && is_full_jdk "$sys_java_home/bin/java"; then
+        export JAVA_HOME="$sys_java_home"
+        echo "☕ System Java 21 JDK detected ($sys_java_bin) — leaving it in place."
+        "$sys_java_bin" -version
+        # Deliberately do NOT call persist_java_env here: the user's shell
+        # already resolves `java` to this install on its own. Writing our own
+        # JAVA_HOME into their RC file would silently override a newer/other
+        # Java 21 build on every future terminal.
+        return
+      fi
+      echo "☕ System Java 21 found ($sys_java_bin), but it is a JRE rather than a JDK."
+      echo "   Liferay's search engine needs a JDK, so the course JDK will be installed."
     fi
   fi
 
-  # No usable Java 21 found on the system — install our managed JRE and
+  # No usable Java 21 JDK found on the system — install our managed JDK and
   # persist JAVA_HOME so every new terminal picks it up.
-  install_zulu_jre
+  install_zulu_jdk
   export JAVA_HOME="$JAVA_DIR"
   export PATH="$JAVA_HOME/bin:$PATH"
 }
@@ -353,6 +400,16 @@ if [[ "$_JAVA_VER" != "21" ]]; then
   echo "   JAVA_HOME: ${JAVA_HOME:-not set}"
   echo "   Java binary: $_JAVA_BIN"
   echo "   If Java 21 was just installed, open a new terminal and re-run the script."
+  exit 1
+fi
+if ! is_full_jdk "$_JAVA_BIN"; then
+  echo "❌ Java 21 was found, but it is a JRE rather than a full JDK."
+  echo "   JAVA_HOME: ${JAVA_HOME:-not set}"
+  echo "   Java binary: $_JAVA_BIN"
+  echo "   Liferay starts Elasticsearch as a child process for search, and that"
+  echo "   process cannot boot without the jdk.attach module a JDK provides."
+  echo "   Please install a Java 21 JDK, or unset JAVA_HOME and re-run this"
+  echo "   script so it can install the course JDK for you."
   exit 1
 fi
 
