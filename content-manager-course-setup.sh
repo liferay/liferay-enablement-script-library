@@ -243,23 +243,48 @@ persist_java_env() {
     local RC="${HOME}/.bashrc"
   fi
 
-  local MARKER=".liferay-course-runtime/zulu-java-21"
+  local BEGIN_MARKER="# BEGIN Liferay Course Launcher"
+  local END_MARKER="# END Liferay Course Launcher"
 
-  # Remove any line from a previous run that references our managed JRE path.
-  if grep -qF "$MARKER" "$RC" 2>/dev/null; then
+  # Remove any entry from a previous run before re-appending. This drops the
+  # delimited block written below, and also the older undelimited format: that
+  # cleanup matched only lines containing the runtime path, so the comment and
+  # the `export PATH="$JAVA_HOME/bin:$PATH"` line never matched and piled up on
+  # every run — leaving orphaned PATH lines that prepended whatever JAVA_HOME
+  # happened to hold at that point in the file.
+  if [[ -f "$RC" ]]; then
     local _tmp_rc
     _tmp_rc=$(mktemp)
-    grep -vF "$MARKER" "$RC" > "$_tmp_rc" || true
+    awk -v b="$BEGIN_MARKER" -v e="$END_MARKER" \
+        -v c="# Added by Liferay Course Launcher" \
+        -v j='export JAVA_HOME="${HOME}/.liferay-course-runtime/zulu-java-21"' \
+        -v p='export PATH="$JAVA_HOME/bin:$PATH"' '
+      $0 == b { inblock = 1; next }
+      $0 == e { inblock = 0; next }
+      inblock { next }
+      $0 == c { legacy = 1; next }
+      legacy && ($0 == j || $0 == p) { next }
+      { legacy = 0; print }
+    ' "$RC" | awk '
+      { lines[NR] = $0 }
+      END {
+        last = NR
+        while (last > 0 && lines[last] ~ /^[[:space:]]*$/) { last-- }
+        for (i = 1; i <= last; i++) { print lines[i] }
+      }
+    ' > "$_tmp_rc"
     mv "$_tmp_rc" "$RC"
   fi
 
-  # Append a fresh entry. ${HOME} and $JAVA_HOME are written as literal text
-  # (single-quoted printf) so the RC file is portable for any username — the
-  # shell expands them when it sources the file on each new terminal session.
+  # Append a fresh entry, fenced by markers so the next run can remove it whole.
+  # ${HOME} and $JAVA_HOME are written as literal text (single-quoted printf) so
+  # the RC file is portable for any username — the shell expands them when it
+  # sources the file on each new terminal session.
   {
-    printf '\n# Added by Liferay Course Launcher\n'
+    printf '\n%s\n' "$BEGIN_MARKER"
     printf 'export JAVA_HOME="${HOME}/.liferay-course-runtime/zulu-java-21"\n'
     printf 'export PATH="$JAVA_HOME/bin:$PATH"\n'
+    printf '%s\n' "$END_MARKER"
   } >> "$RC"
   echo ""
   echo "📝 JAVA_HOME configured in $RC"
