@@ -200,6 +200,20 @@ install_zulu_jdk() {
   tar -xzf "$TMP_TAR" -C "$JAVA_DIR" --strip-components=1
   rm -f "$TMP_TAR"
 
+  # Since 21.0.12, Azul ships the macOS bundles as a signed .jdk app bundle, so
+  # --strip-components=1 leaves Contents/Home/{bin,lib,...} rather than bin/
+  # directly; 21.0.1 and earlier were flat, and Linux and Windows still are.
+  # Flatten it so "$JAVA_DIR/bin/java" is valid on every platform — that literal
+  # path is written into the shell RC file and into Tomcat's setenv.sh, so it has
+  # to be the real Java home.
+  if [[ ! -x "$JAVA_DIR/bin/java" ]] && [[ -x "$JAVA_DIR/Contents/Home/bin/java" ]]; then
+    local FLATTEN_DIR="${RUNTIME_DIR}/.java-home-tmp"
+    rm -rf "$FLATTEN_DIR"
+    mv "$JAVA_DIR/Contents/Home" "$FLATTEN_DIR"
+    rm -rf "$JAVA_DIR"
+    mv "$FLATTEN_DIR" "$JAVA_DIR"
+  fi
+
   if ! is_full_jdk "$JAVA_DIR/bin/java"; then
     echo "❌ The Java runtime downloaded from Azul is not a full JDK."
     echo "   Installed at: $JAVA_DIR"
