@@ -40,6 +40,9 @@ function install-course {
         "--building-enterprise-websites" {
             $RepoUrl = "https://github.com/liferay/liferay-course-building-enterprise-websites/archive/refs/heads/main.zip"
         }
+        "--building-enterprise-websites-classroom" {
+            $RepoUrl = "https://github.com/liferay/liferay-course-building-enterprise-websites/archive/refs/heads/2026.q3-main.zip"
+        }
         "--foundations-of-commerce" {
             $RepoUrl = "https://github.com/liferay/liferay-course-foundations-of-commerce/archive/refs/heads/main.zip"
         }

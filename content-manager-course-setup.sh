@@ -61,6 +61,9 @@ case "$COURSE_KEY" in
     --building-enterprise-websites)
     REPO_URL="https://github.com/liferay/liferay-course-building-enterprise-websites/archive/refs/heads/main.zip"
     ;;
+    --building-enterprise-websites-classroom)
+    REPO_URL="https://github.com/liferay/liferay-course-building-enterprise-websites/archive/refs/heads/2026.q3-main.zip"
+    ;;
     --foundations-of-commerce)
     REPO_URL="https://github.com/liferay/liferay-course-foundations-of-commerce/archive/refs/heads/main.zip"
     ;;
